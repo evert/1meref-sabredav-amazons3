@@ -31,6 +31,7 @@ class Sabre_CalDAV_Backend_PDO extends Sabre_CalDAV_Backend_Abstract {
     public $propertyMap = array(
         '{DAV:}displayname'                          => 'displayname',
         '{urn:ietf:params:xml:ns:caldav}calendar-description' => 'description',
+        '{urn:ietf:params:xml:ns:caldav}calendar-timezone'    => 'timezone',
         '{http://apple.com/ns/ical/}calendar-order'  => 'calendarorder',
         '{http://apple.com/ns/ical/}calendar-color'  => 'calendarcolor',
     );
@@ -70,7 +71,7 @@ class Sabre_CalDAV_Backend_PDO extends Sabre_CalDAV_Backend_Abstract {
             $calendar = array(
                 'id' => $row['id'],
                 'uri' => $row['uri'],
-                '{' . Sabre_CalDAV_Server::NS_CALENDARSERVER . '}getctag' => $row['ctag'],
+                '{' . Sabre_CalDAV_Plugin::NS_CALENDARSERVER . '}getctag' => $row['ctag'],
             );
 
             foreach($this->propertyMap as $xmlName=>$dbName) {
