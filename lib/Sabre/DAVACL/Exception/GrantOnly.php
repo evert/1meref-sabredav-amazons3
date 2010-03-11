@@ -16,7 +16,7 @@
  *
  * This exception is thrown if the user tried to set a deny rule, but only grants are supported
  */
-class Sabre_DAVACL_Exception_GrantOnly extends Sabre_DAV_Exception_PermissionDenied {
+class Sabre_DAVACL_Exception_GrantOnly extends Sabre_DAV_Exception_Forbidden {
 
     protected $uri;
     protected $privileges;

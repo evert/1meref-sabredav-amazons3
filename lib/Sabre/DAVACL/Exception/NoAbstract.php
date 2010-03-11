@@ -16,7 +16,7 @@
  *
  * This exception is thrown if the user tried to set a privilege that was marked as abstract
  */
-class Sabre_DAVACL_Exception_NoAbstract extends Sabre_DAV_Exception_PermissionDenied {
+class Sabre_DAVACL_Exception_NoAbstract extends Sabre_DAV_Exception_Forbidden {
 
     function __construct($privilege) {
 

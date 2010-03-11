@@ -17,7 +17,7 @@
  * This exception is thrown, if the user tried to set an ACE with a principal that is
  * not allowed.
  */
-class Sabre_DAVACL_Exception_AllowedPrincipal extends Sabre_DAV_Exception_PermissionDenied {
+class Sabre_DAVACL_Exception_AllowedPrincipal extends Sabre_DAV_Exception_Forbidden {
 
     function __construct($message = null) {
 

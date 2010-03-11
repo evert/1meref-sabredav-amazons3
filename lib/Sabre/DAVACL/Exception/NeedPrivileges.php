@@ -17,7 +17,7 @@
  * The 403-need privileges is thrown when a user didn't have the appropriate
  * permissions to perform an operation
  */
-class Sabre_DAVACL_Exception_NeedPrivileges extends Sabre_DAV_Exception_PermissionDenied {
+class Sabre_DAVACL_Exception_NeedPrivileges extends Sabre_DAV_Exception_Forbidden {
 
     protected $uri;
     protected $privileges;

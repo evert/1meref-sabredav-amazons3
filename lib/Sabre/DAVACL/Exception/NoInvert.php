@@ -17,7 +17,7 @@
  * This exception is thrown if the user tried to set an inverted ACE, but inverted
  * ACE's are not supported.
  */
-class Sabre_DAVACL_Exception_NoInvert extends Sabre_DAV_Exception_PermissionDenied {
+class Sabre_DAVACL_Exception_NoInvert extends Sabre_DAV_Exception_Forbidden {
 
     protected $uri;
     protected $privileges;
