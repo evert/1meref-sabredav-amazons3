@@ -800,7 +800,7 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
 
         // Children first
         $currentNode = $this->server->tree->getNodeForPath($searchUri);
-        if ($currentNode instanceof Sabre_DAV_IDirectory) {
+        if ($currentNode instanceof Sabre_DAV_ICollection) {
             foreach($currentNode->getChildren() as $child) {
                 $results = array_merge($results,$this->principalMatchReportPropertySearch($principalUri,$searchUri.'/' . $child->getName(),$searchProperty,$requestedProperties));
             }
