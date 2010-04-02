@@ -211,7 +211,6 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
         if (array_key_exists('{DAV:}supported-report-set', $properties[200])) {
             $properties[200]['{DAV:}supported-report-set']->addReport(array(
                 '{DAV:}acl-principal-prop-set',
-                '{DAV:}expand-property',
                 '{DAV:}principal-match',
                 '{DAV:}principal-property-search',
                 '{DAV:}principal-search-property-set',
@@ -572,8 +571,6 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
         switch($reportName) { 
             case '{DAV:}acl-principal-prop-set' :
                 return $this->aclPrincipalPropSetReport($dom);
-            case '{DAV:}expand-property' :
-                return $this->expandPropertyReport($dom);
             case '{DAV:}principal-match' :
                 return $this->principalMatchReport($dom);
             case '{DAV:}principal-property-search' :
@@ -636,87 +633,6 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
    
         // Make sure the event chain is broken
         return false;
-
-    }
-
-    /**
-     * expandPropertyReport 
-     * 
-     * @param DomNode $dom 
-     * @return void
-     */
-    protected function expandPropertyReport($dom) {
-
-        $requestedProperties = $this->parseExpandPropertRequest($dom);
-        $depth = $this->server->getHTTPDepth(0);
-        $requestUri = $this->server->getRequestUri();
-
-        $resources = $this->server->getPropertiesForPath($requestUri,array_keys($requestedProperties),$depth);
-
-        foreach($resources as &$resource) {
-
-            $this->expandProperties($resource,$requestedProperties);
-
-        }
-
-        $multiStatus = $this->server->generateMultiStatus($resources);
-        $this->server->httpResponse->setHeader('Content-Type','application/xml; charset=utf-8');
-        $this->server->httpResponse->sendStatus(207);
-        $this->server->httpResponse->sendBody($multiStatus);
-
-        // Make sure the event chain is broken
-        return false;
-
-    }
-
-    protected function parseExpandPropertyReportRequest($node) {
-
-        $requestedProperties = array();
-        do {
-
-            if ($node->namespaceURI != 'urn:DAV' || $node->localName != 'property') continue; 
-                
-            if ($node->firstChild) {
-                
-                $children = $this->parseExpandPropertyReportProperties($node->firstChild);
-
-            } else {
-
-                $children = array();
-
-            }
-
-            $namespace = $node->getAttribute('namespace');
-            if (!$namespace) $namespace = '{DAV:}';
-
-            $propName = '{'.$namespace.'}' . $node->getAttribute('name');
-            $requestedProperties[$propName] = $children; 
-
-        } while ($node = $node->nextSibling);
-
-    }
-
-    protected function expandProperties(array &$resource,array $requestedProperties) { 
-
-        foreach($requestedProperties as $propName=>$children) {
-
-            if (count($childProperties)<1) break;
-
-            // But only if this was a property with href value
-            if (!isset($resource[200][$propertyName])) break;
-            if (!($resource[200][$propertyName] instanceof Sabre_DAV_Property_Href)) break;
-            
-            $href = $resource[200][$propertyName]->getHref();
-
-            list($childResource) = $this->server->getPropertiesForPath($href,array_keys($children));
-            
-            // Child elementsa are also expanded again
-            $this->expandProperties($childResource,$children);
-
-            // Finally, this is all wrapped in a Request property
-            $resource[200][$propertyName] = new Sabre_DAV_Property_Response($href,$childResource);
-
-        }
 
     }
 
