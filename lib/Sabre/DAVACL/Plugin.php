@@ -201,10 +201,6 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
                     unset($properties[404][$rProperty]);
                     break;
 
-                case '{DAV:}principal-collection-set' :
-                    $properties[200][$rProperty] = new Sabre_DAV_Property_Href(self::PRINCIPAL_ROOT . '/');
-                    unset($properties[404][$rProperty]);
-                    break;
             }
 
         }
