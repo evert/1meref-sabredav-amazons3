@@ -85,6 +85,11 @@ class Sabre_DAV_FS_Directory extends Sabre_DAV_FS_Node implements Sabre_DAV_ICol
      */
     public function delete() {
 
+        // If nameOverride is on, deleting can result in unexpected behaviour.
+        // Therefore we disable it to be on the safe side. 
+        if (!is_null($this->nameOverride)) {
+            throw new Sabre_DAV_Exception_Forbidden('Deleting this node is not allowed');
+        }
         foreach($this->getChildren() as $child) $child->delete();
         rmdir($this->path);
 
