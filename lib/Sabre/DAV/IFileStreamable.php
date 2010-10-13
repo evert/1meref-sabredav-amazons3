@@ -10,7 +10,7 @@
  * @author Paul Voegler 
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
-interface Sabre_DAV_IFileStream extends Sabre_DAV_IFile
+interface Sabre_DAV_IFileStreamable extends Sabre_DAV_IFile
 {
 	/**
 	 * Updates the data
