@@ -462,7 +462,7 @@ class Sabre_DAV_Server {
         if (!$this->checkPreconditions(true)) return false; 
 
         if (!($node instanceof Sabre_DAV_IFile)) throw new Sabre_DAV_Exception_NotImplemented('GET is only implemented on File objects');
-        if (!($node instanceof Sabre_DAV_IFileStream)) {
+        if (!($node instanceof Sabre_DAV_IFileStreamable)) {
 
             $body = $node->get();
 
@@ -559,7 +559,7 @@ class Sabre_DAV_Server {
             $this->httpResponse->setHeader('Content-Range','bytes ' . $start . '-' . $end . '/' . $nodeSize);
             $this->httpResponse->sendStatus(206);
 
-            if (!($node instanceof Sabre_DAV_IFileStream)) {
+            if (!($node instanceof Sabre_DAV_IFileStreamable)) {
 
                 // New read/write stream
                 $newStream = fopen('php://temp','r+');
@@ -580,7 +580,7 @@ class Sabre_DAV_Server {
             if ($nodeSize) $this->httpResponse->setHeader('Content-Length',$nodeSize);
             $this->httpResponse->sendStatus(200);
 
-            if (!($node instanceof Sabre_DAV_IFileStream))
+            if (!($node instanceof Sabre_DAV_IFileStreamable))
                 $this->httpResponse->sendBody($body);
             else
                 $node->get(true);

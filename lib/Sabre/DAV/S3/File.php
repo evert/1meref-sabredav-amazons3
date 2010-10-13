@@ -9,7 +9,7 @@
  * @author Paul Voegler
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
-class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFileStream
+class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFileStreamable
 {
 	/**
 	 * Size of the object
