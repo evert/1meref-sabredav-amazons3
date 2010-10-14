@@ -7,7 +7,6 @@
  * 
  * @package Sabre
  * @subpackage DAV
- * @copyright Copyright (C) 2010 Paul Voegler. All rights reserved.
  * @author Paul Voegler 
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
@@ -30,6 +29,8 @@ class Sabre_DAV_S3_Exception extends Sabre_DAV_Exception
 	public function __construct($message, $s3response = null)
 	{
 		$this->s3response = $s3response;
+		if ($s3response)
+			$message .= '(S3 status: ' . $s3response->status . ')';
 		parent::__construct($message);
 	}
 

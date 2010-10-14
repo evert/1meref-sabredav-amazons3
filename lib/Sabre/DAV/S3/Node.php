@@ -6,7 +6,6 @@
  *
  * @package Sabre
  * @subpackage DAV
- * @copyright Copyright (C) 2010 Paul Voegler. All rights reserved.
  * @author Paul Voegler
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  * @todo Handle ACL to inherit like StorageClass. Currently ACL is set to private by default. But a separate request has to be made to get the current ACL...
@@ -168,12 +167,12 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 			$newObject .= '/';
 		
 		$response = $this->s3->copy_object(array('bucket' => $this->bucket, 'filename' => $this->object), array('bucket' => $this->bucket, 'filename' => $newObject));
-		if (!$response || !$response->isOK())
+		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 PUT Object (Copy) failed', $response);
 		
 		$response = $this->s3->delete_object($this->bucket, $this->object);
-		if (!$response || !$response->isOK())
-			throw new Sabre_DAV_S3_Exception('S3 DELETE Object failed', $response);
+		if (!$response->isOK())
+			throw new Sabre_DAV_S3_Exception('S3 DELETE Object (Copy) failed', $response);
 		
 		$this->object = $newObject;
 	}

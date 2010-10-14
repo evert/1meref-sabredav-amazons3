@@ -7,7 +7,6 @@
  *
  * @package Sabre
  * @subpackage DAV
- * @copyright Copyright (C) 2010 Paul Voegler. All rights reserved.
  * @author Paul Voegler
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
@@ -60,7 +59,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 	}
 
 	/**
-	 * Returns a specific child node, referenced by its name
+	 * Returns a specific child node by its name
 	 *
 	 * @param string $name
 	 * @throws Sabre_DAV_Exception_FileNotFound
@@ -115,7 +114,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 						if ($ts > $lastmodified)
 							$lastmodified = $ts;
 					}
-					if (substr($file->Key, -1, 1) == '/') //exclude the "directory" itself (usually an empty file, if present). But it could also hold data like any other file... not accessable here!
+					if (substr($file->Key, -1, 1) == '/') //exclude the "directory" itself (usually an empty file, if present). But it could also hold data like any other file... not accessible here!
 					{
 						if ($file->StorageClass)
 							$this->setStorageClass((string)$file->StorageClass);
@@ -123,7 +122,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 					else
 					{
 						$node = new Sabre_DAV_S3_File((string)$file->Key, $this);
-						if (!array_key_exists($node->getName(), $nodes)) //just skip files with the same name as a directory (file "somefilefolder" and directory "somefilefolder/")... not accessable here!
+						if (!array_key_exists($node->getName(), $nodes)) //just skip files with the same name as a directory (file "somefilefolder" and directory "somefilefolder/")... not accessible here!
 						{
 							$node->setLastModified($ts);
 							if ($file->ContentType) //not (yet?) sent by Amazon
@@ -136,12 +135,12 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 						}
 					}
 				}
-				$this->setLastModified($lastmodified); //set own last modified time to the latest date we found
+				$this->setLastModified($lastmodified); //set own last modified time to the latest date we found... not really correct but not really relevant either 
 			}
 		}
 		
 		$this->children = $nodes;
-		return array_values($this->children);
+		return $this->children;
 	}
 
 	/**
@@ -160,7 +159,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 	}
 
 	/**
-	 * Deletes all objects in this virtual directory, and then itself
+	 * Deletes all objects in this virtual directory and itself
 	 *
 	 * @throws Sabre_DAV_S3_Exception
 	 * @return void
