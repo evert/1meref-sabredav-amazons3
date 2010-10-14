@@ -6,7 +6,8 @@
  * @package Sabre
  * @subpackage HTTP
  * @copyright Copyright (C) 2007-2010 Rooftop Solutions. All rights reserved.
- * @author Paul Voegler, Evert Pot (http://www.rooftopsolutions.nl/) 
+ * @author Evert Pot (http://www.rooftopsolutions.nl/)
+ * @author Paul Voegler
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
 class Sabre_HTTP_Util {
@@ -19,7 +20,7 @@ class Sabre_HTTP_Util {
      * @param string $dateHeader 
      * @return bool|DateTime 
      */
-    static function parseRFC2616Date($dateHeader) {
+    static function parseHTTPDate($dateHeader) {
 
         //RFC 2616 section 3.3.1 Full Date
         //Only the format is checked, valid ranges are checked by strtotime below
