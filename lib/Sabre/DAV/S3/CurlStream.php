@@ -6,7 +6,6 @@
  *
  * @package Sabre
  * @subpackage DAV
- * @copyright Copyright (C) 2010 Paul Voegler. All rights reserved.
  * @author Paul Voegler
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
