@@ -47,9 +47,6 @@ class Sabre_HTTP_Util {
         $dateHeader = trim($dateHeader, ' ');
         if (!preg_match('/^' . $HTTP_date . '$/', $dateHeader))
             return false;
-        //append implicit GMT timezone to ANSI C time format
-        if (!preg_match('/\ GMT$/', $dateHeader))
-            $dateHeader .= ' GMT';
 
         //append implicit GMT timezone to ANSI C time format
         if (!preg_match('/\ GMT$/', $dateHeader))
