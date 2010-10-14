@@ -6,6 +6,10 @@
 	  If you have custom plugins, make sure they use this argument. If they
 	  don't, they will likely still work, but it might get in the way of
 	  future changes.
+	* Changed: All getETag methods MUST now surround the etag with
+	  double-quotes. This was a mistake made in all previous SabreDAV
+	  versions. If you don't do this, any If-Match, If-None-Match and If:
+	  headers using Etags will work incorrectly. (Issue 85). 
 	* Added: Sabre_DAV_Auth_Backend_AbstractBasic class, which can be used to
 	  easily implement basic authentication.
 	* Removed: Sabre_DAV_PermissionDenied class. Use Sabre_DAV_Forbidden
@@ -24,7 +28,9 @@
 	* Fixed: Issue 65: Invalid dates are now ignored.
 	* Updated: Refactoring in Sabre_CalDAV to make everything a bit more
 	  ledgable.
-
+	* Fixed: Issue 88: Fixed compatibility for running SabreDAV on Windows.
+	* Fixed: Issue 86: Fixed Content-Range top-boundary from 'file size' to
+	  'file size'-1. 
 
 1.2.4 (2010-07-13)
 	* Fixed: Issue 62: Guessing baseUrl fails when url contains a
