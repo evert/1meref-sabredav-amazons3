@@ -253,8 +253,8 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 			$this->bucket,
 			'/^' . preg_quote($this->object, '/') . '.*$/'
 		);
-		if (!$response->isOK())
-			throw new Sabre_DAV_S3_Exception('S3 DELETE Objects failed', $response);
+		if (!$response)
+			throw new Sabre_DAV_S3_Exception('S3 DELETE Objects failed');
 
 		$this->children = null;
 	}
