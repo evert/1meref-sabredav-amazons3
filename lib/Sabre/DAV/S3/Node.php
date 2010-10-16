@@ -161,7 +161,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	}
 
 	/**
-	 * Converts the ACL from an associative array to one of Amazons predefined canned ACLs
+	 * Converts the ACL from an associative array to one of Amazon's predefined canned ACLs
 	 * Only limited sets of policies can be reflected. Owner always has full control.
 	 *
 	 * @param array $acl
@@ -189,14 +189,14 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 			}
 		}
 
-		if ($all & 3 == 3)
+		if (($all & 3) == 3)
 			return AmazonS3::ACL_OPEN;
-		if ($all & 1 == 1)
+		elseif (($all & 1) == 1)
 			return AmazonS3::ACL_PUBLIC;
-		if ($auth & 1 == 1)
+		elseif (($auth & 1) == 1)
 			return AmazonS3::ACL_AUTH_READ;
-
-		return AmazonS3::ACL_PRIVATE;
+		else
+			return AmazonS3::ACL_PRIVATE;
 	}
 
 	/**
@@ -210,32 +210,33 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 		if (!$force && $this->metadata_requested)
 			return;
 
-		$data = $this->s3->get_object_metadata($this->bucket, $this->object);
-
-		if ($data)
-		{
-			if (isset($data['LastModified']))
-			{
-				$dt = new DateTime($data['LastModified']);
-				$this->setLastModified($dt->getTimestamp());
-			}
-			if (isset($data['ContentLength']))
-				$this->setSize((int)$data['ContentLength']);
-			if (isset($data['ETag']))
-				$this->setETag($data['ETag']);
-			if (isset($data['ContentType']))
-				$this->setContentType($data['ContentType']);
-			if (isset($data['StorageClass']))
-				$this->setStorageClass($data['StorageClass']);
-			if (!empty($data['Owner']))
-				$this->setOwner($data['Owner']);
-			if (!empty($data['ACL']))
-				$this->setACL($data['ACL']);
-
-			$this->metadata_requested = true;
-		}
-		else
+		$data = $this->s3->get_object_metadata
+		(
+			$this->bucket,
+			$this->object
+		);
+		if (!$data)
 			throw new Sabre_DAV_S3_Exception('S3 object metadata retrieve failed');
+		
+		if (isset($data['LastModified']))
+		{
+			$dt = new DateTime($data['LastModified']);
+			$this->setLastModified($dt->getTimestamp());
+		}
+		if (isset($data['ContentLength']))
+			$this->setSize((int)$data['ContentLength']);
+		if (isset($data['ETag']))
+			$this->setETag($data['ETag']);
+		if (isset($data['ContentType']))
+			$this->setContentType($data['ContentType']);
+		if (isset($data['StorageClass']))
+			$this->setStorageClass($data['StorageClass']);
+		if (!empty($data['Owner']))
+			$this->setOwner($data['Owner']);
+		if (!empty($data['ACL']))
+			$this->setACL($data['ACL']);
+
+		$this->metadata_requested = true;
 	}
 
 	/**
@@ -270,11 +271,32 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 		if ($this instanceof Sabre_DAV_S3_Directory)
 			$newObject .= '/';
 
-		$response = $this->s3->copy_object(array('bucket' => $this->bucket, 'filename' => $this->object), array('bucket' => $this->bucket, 'filename' => $newObject), array('storage' => $this->getStorageClass(), 'acl' => $this->getACL()));
+		$response = $this->s3->copy_object
+		(
+			array
+			(
+				'bucket' => $this->bucket,
+				'filename' => $this->object
+			),
+			array
+			(
+				'bucket' => $this->bucket,
+				'filename' => $newObject
+			),
+			array
+			(
+				'storage' => $this->getStorageClass(),
+				'acl' => $this->getACL()
+			)
+		);
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 PUT Object (Copy) failed', $response);
 
-		$response = $this->s3->delete_object($this->bucket, $this->object);
+		$response = $this->s3->delete_object
+		(
+			$this->bucket,
+			$this->object
+		);
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 DELETE Object (Copy) failed', $response);
 

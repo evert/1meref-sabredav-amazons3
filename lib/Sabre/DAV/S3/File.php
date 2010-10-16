@@ -45,7 +45,11 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFile, Sa
 	public function get($streamout = false, $start = null, $end = null)
 	{
 		$opts = array();
-		$opts['curlopts'] = array(CURLOPT_HEADER => false, CURLOPT_RETURNTRANSFER => false);
+		$opts['curlopts'] = array
+		(
+			CURLOPT_HEADER => false,
+			CURLOPT_RETURNTRANSFER => false
+		);
 		if (isset($start) && isset($end) && $start >= 0 && $start <= $end)
 			$opts['range'] = $start . '-' . $end;
 
@@ -54,7 +58,12 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFile, Sa
 			$filehandle = fopen('php://temp', 'w+');
 			$opts['curlopts'][CURLOPT_FILE] = $filehandle;
 
-			$response = $this->s3->get_object($this->bucket, $this->object, $opts);
+			$response = $this->s3->get_object
+			(
+				$this->bucket,
+				$this->object,
+				$opts
+			);
 			if (!$response->isOK(array(200, 206)))
 				throw new Sabre_DAV_S3_Exception('S3 GET Object failed', $response);
 
@@ -118,11 +127,16 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFile, Sa
 				rewind($newData);
 				$stats = @fstat($newData);
 				$size = $stats['size'];
-				if (!isset($size) || $size < 0);
-				throw new Sabre_DAV_Exception_BadRequest('Content-Length for PUT cannot be determined');
+				if (!isset($size) || $size < 0)
+					throw new Sabre_DAV_Exception_BadRequest('Content-Length for PUT cannot be determined');
 			}
 			$callback = new Sabre_DAV_S3_CurlStream($data, $size);
-			$opts['curlopts'] = array(CURLOPT_UPLOAD => true, CURLOPT_INFILESIZE => $size, CURLOPT_READFUNCTION => array($callback, 'read'));
+			$opts['curlopts'] = array
+			(
+				CURLOPT_UPLOAD => true,
+				CURLOPT_INFILESIZE => $size,
+				CURLOPT_READFUNCTION => array($callback, 'read')
+			);
 		}
 		else //should we even allow this? The directory createFile allows $data to be null so we have to handle this here
 		{
@@ -142,7 +156,12 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFile, Sa
 		if (isset($acl))
 			$opts['acl'] = $acl;
 
-		$response = $this->s3->create_object($this->bucket, $this->object, $opts);
+		$response = $this->s3->create_object
+		(
+			$this->bucket,
+			$this->object,
+			$opts
+		);
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 PUT Object failed', $response);
 
@@ -161,7 +180,11 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFile, Sa
 	 */
 	public function delete()
 	{
-		$response = $this->s3->delete_object($this->bucket, $this->object);
+		$response = $this->s3->delete_object
+		(
+			$this->bucket,
+			$this->object
+		);
 		if (!$response->isOK())
 			throw new Sabre_DAV_Exception('S3 DELETE Object failed', $response);
 	}

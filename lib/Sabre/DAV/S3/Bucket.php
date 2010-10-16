@@ -105,8 +105,11 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 */
 	public function delete()
 	{
-		$response = $this->s3->delete_bucket($this->bucket, true);
-
+		$response = $this->s3->delete_bucket
+		(
+			$this->bucket,
+			true
+		);
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 DELETE Bucket failed', $response);
 
