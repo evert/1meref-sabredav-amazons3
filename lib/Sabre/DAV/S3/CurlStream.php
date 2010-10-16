@@ -67,14 +67,14 @@ class Sabre_DAV_S3_CurlStream
 	 */
 	public function read($curlhandle, $filehandle, $maxsize)
 	{
-		if (!is_null($this->resource))
+		if (isset($this->resource))
 			$filehandle = $this->resource;
 		if (!is_resource($filehandle))
 			throw new ErrorException('Input resource missing');
-		if (feof($filehandle) || (!is_null($this->streamsize) && $this->handled >= $this->streamsize))
+		if (feof($filehandle) || (isset($this->streamsize) && $this->handled >= $this->streamsize))
 			return null;
 
-		$maxchunk = (!is_null($this->streamsize && $this->streamsize - $this->handled < $this->maxchunk)) ? $this->streamsize - $this->handled : $this->maxchunk;
+		$maxchunk = (isset($this->streamsize) && $this->streamsize - $this->handled < $this->maxchunk) ? $this->streamsize - $this->handled : $this->maxchunk;
 		$maxchunk = min($maxchunk, $maxsize);
 
 		$data = fread($filehandle, $maxchunk);
@@ -94,10 +94,11 @@ class Sabre_DAV_S3_CurlStream
 	 */
 	public function write($curlhandle, $data)
 	{
-		if ($data === '' || is_null($data))
+		if (!isset($data) || $data === '')
 			return 0;
-		if (!is_null($this->streamsize) && $this->handled >= $this->streamsize)
+		if (isset($this->streamsize) && $this->handled >= $this->streamsize)
 			return false;
+
 		$filehandle = $this->resource;
 		if (!is_resource($filehandle))
 			throw new ErrorException('Output resource missing');

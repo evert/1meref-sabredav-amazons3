@@ -99,7 +99,17 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 		$name = rtrim($name, '/');
 		$newObject = $this->object . $name . '/';
 
-		$response = $this->s3->create_object($this->bucket, $newObject, array('body' => '', 'storage' => $this->getStorageClass(), 'acl' => $this->getACL()));
+		$response = $this->s3->create_object
+		(
+			$this->bucket,
+			$newObject,
+			array
+			(
+				'body' => '',
+				'storage' => $this->getStorageClass(),
+				'acl' => $this->getACL()
+			)
+		);
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 PUT Object failed', $response);
 
@@ -140,7 +150,15 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 
 		$nodes = array();
 
-		$response = $this->s3->list_objects($this->bucket, array('prefix' => $this->object, 'delimiter' => '/'));
+		$response = $this->s3->list_objects
+		(
+			$this->bucket,
+			array
+			(
+				'prefix' => $this->object,
+				'delimiter' => '/'
+			)
+		);
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 GET Bucket failed', $response);
 
@@ -230,8 +248,11 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 	 */
 	public function delete()
 	{
-		$response = $this->s3->delete_all_objects($this->bucket, '/^' . preg_quote($this->object, '/') . '.*$/');
-
+		$response = $this->s3->delete_all_objects
+		(
+			$this->bucket,
+			'/^' . preg_quote($this->object, '/') . '.*$/'
+		);
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 DELETE Objects failed', $response);
 
