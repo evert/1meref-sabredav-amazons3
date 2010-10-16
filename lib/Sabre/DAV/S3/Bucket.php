@@ -16,17 +16,20 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 * Either an existing S3 instance $s3, or $key and $secret_key have to be given
 	 *
 	 * @param string $bucket
+	 * @param string $storageclass [`AmazonS3::STORAGE_STANDARD`, `AmazonS3::STORAGE_REDUCED`] The default storage class for new objects. 
 	 * @param string $s3
 	 * @param string $key
 	 * @param string $secret_key
 	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($bucket, $s3 = null, $key = null, $secret_key = null, $use_ssl = true)
+	public function __construct($bucket, $storageclass = AmazonS3::STORAGE_STANDARD, $s3 = null, $key = null, $secret_key = null, $use_ssl = true)
 	{
 		parent::__construct(null, null, $bucket, $s3, $key, $secret_key, $use_ssl);
 
-		$this->setStorageClass(''); //buckets unfortunately cannot have a default storage class
+		if (!$storageclass)
+			$storageclass = AmazonS3::STORAGE_STANDARD;
+		$this->setStorageClass($storageclass); //buckets unfortunately cannot have a default storage class set in S3
 	}
 
 	/**
@@ -44,7 +47,7 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 bucket metadata retrieve failed');
 
-		if ($response->Body)
+		if ($response->body)
 		{
 			if (isset($response->body->Owner))
 			{
