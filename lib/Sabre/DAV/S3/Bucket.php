@@ -16,16 +16,17 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 * Either an existing S3 instance $s3, or $key and $secret_key have to be given
 	 *
 	 * @param string $bucket
-	 * @param string $storageclass [`AmazonS3::STORAGE_STANDARD`, `AmazonS3::STORAGE_REDUCED`] The default storage class for new objects. 
+	 * @param string $storageclass [AmazonS3::STORAGE_STANDARD, AmazonS3::STORAGE_REDUCED] The default storage class for new objects. 
 	 * @param string $s3
 	 * @param string $key
 	 * @param string $secret_key
+	 * @param string $region [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1]
 	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($bucket, $storageclass = AmazonS3::STORAGE_STANDARD, $s3 = null, $key = null, $secret_key = null, $use_ssl = true)
+	public function __construct($bucket, $storageclass = AmazonS3::STORAGE_STANDARD, $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
 	{
-		parent::__construct(null, null, $bucket, $s3, $key, $secret_key, $use_ssl);
+		parent::__construct(null, null, $bucket, $s3, $key, $secret_key, $region, $use_ssl);
 
 		if (!$storageclass)
 			$storageclass = AmazonS3::STORAGE_STANDARD;
@@ -45,7 +46,7 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 
 		$response = $this->s3->get_bucket_acl($this->bucket);
 		if (!$response->isOK())
-			throw new Sabre_DAV_S3_Exception('S3 bucket metadata retrieve failed');
+			throw new Sabre_DAV_S3_Exception('S3 Bucket metadata retrieve failed');
 
 		if ($response->body)
 		{
@@ -96,7 +97,7 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 */
 	public function setName($name)
 	{
-		throw new Sabre_DAV_Exception_MethodNotAllowed('S3 buckets cannot be renamed');
+		throw new Sabre_DAV_Exception_MethodNotAllowed('S3 Buckets cannot be renamed');
 	}
 
 	/**

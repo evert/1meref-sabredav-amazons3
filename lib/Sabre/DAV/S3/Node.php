@@ -92,7 +92,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 
 	/**
 	 * The object's Access Control List (ACL)
-	 * String allowed values: [`AmazonS3::ACL_PRIVATE`, `AmazonS3::ACL_PUBLIC`, `AmazonS3::ACL_OPEN`, `AmazonS3::ACL_AUTH_READ`, `AmazonS3::ACL_OWNER_READ`, `AmazonS3::ACL_OWNER_FULL_CONTROL`]
+	 * String allowed values: [AmazonS3::ACL_PRIVATE, AmazonS3::ACL_PUBLIC, AmazonS3::ACL_OPEN, AmazonS3::ACL_AUTH_READ, AmazonS3::ACL_OWNER_READ, AmazonS3::ACL_OWNER_FULL_CONTROL]
 	 *
 	 * @var string
 	 */
@@ -108,10 +108,11 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	 * @param string $s3
 	 * @param string $key
 	 * @param string $secret_key
+	 * @param string $region [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1]
 	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($object = null, $parentnode = null, $bucket = null, $s3 = null, $key = null, $secret_key = null, $use_ssl = true)
+	public function __construct($object = null, $parentnode = null, $bucket = null, $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
 	{
 		$this->object = $object;
 
@@ -131,6 +132,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 		if (isset($key) && isset($secret_key))
 		{
 			$this->s3 = new AmazonS3($key, $secret_key);
+			$this->s3->set_region($region);
 			if (!$use_ssl)
 				$this->s3->disable_ssl();
 		}
@@ -481,7 +483,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	/**
 	 * Gets the object's canned ACL
 	 *
-	 * @return string [`AmazonS3::ACL_PRIVATE`, `AmazonS3::ACL_PUBLIC`, `AmazonS3::ACL_OPEN`, `AmazonS3::ACL_AUTH_READ`, `AmazonS3::ACL_OWNER_READ`, `AmazonS3::ACL_OWNER_FULL_CONTROL`]
+	 * @return string [AmazonS3::ACL_PRIVATE, AmazonS3::ACL_PUBLIC, AmazonS3::ACL_OPEN, AmazonS3::ACL_AUTH_READ, AmazonS3::ACL_OWNER_READ, AmazonS3::ACL_OWNER_FULL_CONTROL]
 	 */
 	public function getACL()
 	{
@@ -494,7 +496,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	/**
 	 * Sets the object's canned ACL
 	 *
-	 * @param string | array $acl Allowed values: [`AmazonS3::ACL_PRIVATE`, `AmazonS3::ACL_PUBLIC`, `AmazonS3::ACL_OPEN`, `AmazonS3::ACL_AUTH_READ`, `AmazonS3::ACL_OWNER_READ`, `AmazonS3::ACL_OWNER_FULL_CONTROL`] or an array of associative arrays with 'id' and 'permission'
+	 * @param string | array $acl Allowed values: [AmazonS3::ACL_PRIVATE, AmazonS3::ACL_PUBLIC, AmazonS3::ACL_OPEN, AmazonS3::ACL_AUTH_READ, AmazonS3::ACL_OWNER_READ, AmazonS3::ACL_OWNER_FULL_CONTROL] or an array of associative arrays with keys 'id' and 'permission'
 	 * @return void
 	 */
 	public function setACL($acl)

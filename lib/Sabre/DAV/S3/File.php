@@ -21,14 +21,15 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFile, Sa
 	 * @param string $s3
 	 * @param string $key
 	 * @param string $secret_key
+	 * @param string $region [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1]
 	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($object, $parentnode = null, $bucket = null, $s3 = null, $key = null, $secret_key = null, $use_ssl = true)
+	public function __construct($object, $parentnode = null, $bucket = null, $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
 	{
 		$object = rtrim($object, '/');
 
-		parent::__construct($object, $parentnode, $bucket, $s3, $key, $secret_key, $use_ssl);
+		parent::__construct($object, $parentnode, $bucket, $s3, $key, $secret_key, $region, $use_ssl);
 
 		$this->setContentType('');	//so that we do not have to query the Content-Type for every PROPFIND request
 	}
