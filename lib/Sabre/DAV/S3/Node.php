@@ -273,6 +273,11 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 		if ($this instanceof Sabre_DAV_S3_Directory)
 			$newObject .= '/';
 
+		//request storage and acl before content-type to provoke a requestMetaData if nessecary. Content-Type is set to an empty string, not null, in File constructor
+		$storage = $this->getStorageClass();
+		$acl = $this->getACL();
+		$contenttype = $this->getContentType();
+
 		$response = $this->s3->copy_object
 		(
 			array
@@ -287,8 +292,12 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 			),
 			array
 			(
-				'storage' => $this->getStorageClass(),
-				'acl' => $this->getACL()
+				'storage' => $storage,
+				'acl' => $acl,
+				'headers' => array
+				(
+					'Content-Type' => $contenttype
+				)
 			)
 		);
 		if (!$response->isOK())
