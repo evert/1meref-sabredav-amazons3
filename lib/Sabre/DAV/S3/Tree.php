@@ -5,7 +5,6 @@
  *
  * @package Sabre
  * @subpackage DAV
- * @author Evert Pot (http://www.rooftopsolutions.nl/) 
  * @author Paul Voegler
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
@@ -20,7 +19,7 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 
 	/**
 	 * Sets up the tree
-	 * A S3 instance or Amazon credentials have to be given
+	 * S3 instance or Amazon credentials have to be given if $rootnode has no S3 instance 
 	 *
 	 * @param Sabre_DAV_S3_Directory $rootnode
 	 * @param string $s3
@@ -50,7 +49,7 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 	}
 
 	/**
-	 * Returns the S3 node object for the requested path  
+	 * Returns the S3 Object node for the requested path  
 	 * 
 	 * @param string $path 
 	 * @return Sabre_DAV_S3_Node 
@@ -62,14 +61,19 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 			return $this->cache[$path];
 
 		list($parent, $child) = Sabre_DAV_URLUtil::splitPath($path);
-		if (isset($parent) && isset($child))
+		$parent = isset($parent) ? $parent : '';
+		$child = isset($child) ? $child : '';
+		$parentNode = null;
+		$childNode = null;
+
+		if ($child !== '')
 		{
-			if ($parent === '')
-				$parentNode = $this->rootNode;
+			if (isset($this->cache[$parent]))
+				$parentNode = $this->cache[$parent];
 			else
 			{
-				if (isset($this->cache[$parent]))
-					$parentNode = $this->cache[$parent];
+				if ($parent === '')
+					$parentNode = $this->rootNode;
 				else
 					$parentNode = new Sabre_DAV_S3_Directory($this->rootNode->getObject() . $parent, null, $this->rootNode->getBucket(), $this->s3);
 			}
@@ -86,16 +90,28 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 		else
 			$childNode = $this->rootNode;
 
-
-		if (isset($parent) && $parent !== '')
-		{
+		if (isset($parentNode))
 			$this->cache[$parent] = $parentNode;
-			$this->cache[$parent . '/' . $child] = $childNode;
-		}
-		else
-			$this->cache[$path] = $childNode;
+		$this->cache[($parent !== '' ? $parent . '/' : '') . $child] = $childNode;
 
 		return $childNode;
+	}
+
+	/**
+	 * Checks if a the node to a given path exists
+	 * 
+	 * @param string $path
+	 */
+	public function nodeExists($path)
+	{
+		try
+		{
+			$this->getNodeForPath($path);
+			return true;
+		}
+		catch (Sabre_DAV_Exception_FileNotFound $e) {}
+
+		return false;
 	}
 
 	/**
