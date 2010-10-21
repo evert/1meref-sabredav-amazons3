@@ -268,10 +268,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 		list($parentPath, ) = Sabre_DAV_URLUtil::splitPath(rtrim($this->object, '/'));
 		list(, $newName) = Sabre_DAV_URLUtil::splitPath($name);
 
-		$newObject = $parentPath;
-		if ($parentPath !== '')
-			$newObject .= '/';
-		$newObject .= $newName;
+		$newObject = ($parentPath !== '' ? $parentPath . '/' : '') . $newName;
 		if ($this instanceof Sabre_DAV_S3_Directory)
 			$newObject .= '/';
 
