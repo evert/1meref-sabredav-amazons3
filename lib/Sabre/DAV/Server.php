@@ -865,6 +865,11 @@ class Sabre_DAV_Server {
     protected function httpMove($uri) {
 
         $moveInfo = $this->getCopyAndMoveInfo();
+
+        // If the destination is part of the source tree, we must fail
+        if ($moveInfo['destination']==$uri) 
+            throw new Sabre_DAV_Exception_Forbidden('Source and destination uri are identical.');
+
         if ($moveInfo['destinationExists']) {
 
             if (!$this->broadcastEvent('beforeUnbind',array($moveInfo['destination']))) return false;
@@ -895,8 +900,11 @@ class Sabre_DAV_Server {
     protected function httpCopy($uri) {
 
         $copyInfo = $this->getCopyAndMoveInfo();
-        if ($copyInfo['destinationExists']) {
+        // If the destination is part of the source tree, we must fail
+        if ($copyInfo['destination']==$uri) 
+            throw new Sabre_DAV_Exception_Forbidden('Source and destination uri are identical.');
 
+        if ($copyInfo['destinationExists']) {
             if (!$this->broadcastEvent('beforeUnbind',array($copyInfo['destination']))) return false;
             $this->tree->delete($copyInfo['destination']);
 

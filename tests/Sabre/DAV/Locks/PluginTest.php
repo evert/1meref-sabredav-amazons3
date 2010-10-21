@@ -7,8 +7,7 @@ class Sabre_DAV_Locks_PluginTest extends Sabre_DAV_AbstractServer {
     function setUp() {
 
         parent::setUp();
-        mkdir(SABRE_TEMPDIR . '/locksdir');
-        $locksBackend = new Sabre_DAV_Locks_Backend_FS(SABRE_TEMPDIR . '/locksdir');
+        $locksBackend = new Sabre_DAV_Locks_Backend_File(SABRE_TEMPDIR . '/locksdb');
         $locksPlugin = new Sabre_DAV_Locks_Plugin($locksBackend);
         $this->server->addPlugin($locksPlugin);
         $this->locksPlugin = $locksPlugin;
@@ -91,6 +90,8 @@ class Sabre_DAV_Locks_PluginTest extends Sabre_DAV_AbstractServer {
             '/d:prop/d:lockdiscovery',
             '/d:prop/d:lockdiscovery/d:activelock',
             '/d:prop/d:lockdiscovery/d:activelock/d:locktype',
+            '/d:prop/d:lockdiscovery/d:activelock/d:lockroot',
+            '/d:prop/d:lockdiscovery/d:activelock/d:lockroot/d:href',
             '/d:prop/d:lockdiscovery/d:activelock/d:locktype/d:write',
             '/d:prop/d:lockdiscovery/d:activelock/d:lockscope',
             '/d:prop/d:lockdiscovery/d:activelock/d:lockscope/d:exclusive',
@@ -103,7 +104,7 @@ class Sabre_DAV_Locks_PluginTest extends Sabre_DAV_AbstractServer {
 
         foreach($elements as $elem) {
             $data = $xml->xpath($elem);
-            $this->assertEquals(1,count($data),'We expected 1 match for the xpath expression "' . $elem . '". ' . count($data) . ' were found');
+            $this->assertEquals(1,count($data),'We expected 1 match for the xpath expression "' . $elem . '". ' . count($data) . ' were found. Full response body: ' . $this->response->body);
         }
 
         $depth = $xml->xpath('/d:prop/d:lockdiscovery/d:activelock/d:depth');
@@ -399,6 +400,48 @@ class Sabre_DAV_Locks_PluginTest extends Sabre_DAV_AbstractServer {
         $this->assertTrue(preg_match('/^<opaquelocktoken:(.*)>$/',$this->response->headers['Lock-Token'])===1,'We did not get a valid Locktoken back (' . $this->response->headers['Lock-Token'] . ')');
 
         $this->assertEquals('HTTP/1.1 412 Precondition failed',$this->response->status);
+
+    }
+
+    /**
+     * @depends testLock
+     */
+    function testLockDeleteParent() {
+
+        $serverVars = array(
+            'REQUEST_URI'    => '/dir/child.txt',
+            'REQUEST_METHOD' => 'LOCK',
+        );
+
+        $request = new Sabre_HTTP_Request($serverVars);
+        $request->setBody('<?xml version="1.0"?>
+<D:lockinfo xmlns:D="DAV:"> 
+    <D:lockscope><D:exclusive/></D:lockscope> 
+    <D:locktype><D:write/></D:locktype> 
+    <D:owner> 
+        <D:href>http://example.org/~ejw/contact.html</D:href> 
+    </D:owner> 
+</D:lockinfo>');
+
+        $this->server->httpRequest = $request;
+        $this->server->exec();
+
+        $this->assertEquals('application/xml; charset=utf-8',$this->response->headers['Content-Type']);
+        $this->assertTrue(preg_match('/^<opaquelocktoken:(.*)>$/',$this->response->headers['Lock-Token'])===1,'We did not get a valid Locktoken back (' . $this->response->headers['Lock-Token'] . ')');
+
+        $this->assertEquals('HTTP/1.1 200 Ok',$this->response->status);
+
+        $serverVars = array(
+            'REQUEST_URI'    => '/dir',
+            'REQUEST_METHOD' => 'DELETE',
+        );
+
+        $request = new Sabre_HTTP_Request($serverVars);
+        $this->server->httpRequest = $request;
+        $this->server->exec();
+
+        $this->assertEquals('HTTP/1.1 423 Locked',$this->response->status);
+        $this->assertEquals('application/xml; charset=utf-8',$this->response->headers['Content-Type']);
 
     }
 

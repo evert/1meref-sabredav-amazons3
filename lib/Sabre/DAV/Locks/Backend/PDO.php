@@ -33,10 +33,14 @@ class Sabre_DAV_Locks_Backend_PDO extends Sabre_DAV_Locks_Backend_Abstract {
      * This method should return all the locks for a particular uri, including
      * locks that might be set on a parent uri.
      *
+     * If returnChildLocks is set to true, this method should also look for
+     * any locks in the subtree of the uri for locks.
+     *
      * @param string $uri 
+     * @param bool $returnChildLocks
      * @return array 
      */
-    public function getLocks($uri) {
+    public function getLocks($uri, $returnChildLocks) {
 
         // NOTE: the following 10 lines or so could be easily replaced by 
         // pure sql. MySQL's non-standard string concatination prevents us
@@ -63,6 +67,13 @@ class Sabre_DAV_Locks_Backend_PDO extends Sabre_DAV_Locks_Backend_Abstract {
         }
 
         $query.=')';
+
+        if ($returnChildLocks) {
+
+            $query.=' OR (uri LIKE ?)';
+            $params[] = $uri . '%';
+
+        }
 
         $stmt = $this->pdo->prepare($query);
         $stmt->execute($params);
@@ -101,7 +112,7 @@ class Sabre_DAV_Locks_Backend_PDO extends Sabre_DAV_Locks_Backend_Abstract {
         $lockInfo->created = time();
         $lockInfo->uri = $uri;
 
-        $locks = $this->getLocks($uri);
+        $locks = $this->getLocks($uri,false);
         $exists = false;
         foreach($locks as $k=>$lock) {
             if ($lock->token == $lockInfo->token) $exists = true;
