@@ -13,10 +13,10 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFile, Sa
 
 	/**
 	 * Sets up the file, expects a full object name
-	 * If $parentnode is not given, a bucket name and a S3 instance or Amazon credentials have to be given
+	 * If $parent is not given, a bucket name and a S3 instance or Amazon credentials have to be given
 	 *
 	 * @param string $object
-	 * @param Sabre_DAV_S3_Directory $parentnode
+	 * @param Sabre_DAV_S3_Directory $parent
 	 * @param string $bucket
 	 * @param AmazonS3 $s3
 	 * @param string $key
@@ -25,11 +25,11 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFile, Sa
 	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($object, Sabre_DAV_S3_Directory $parentnode = null, $bucket = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
+	public function __construct($object, Sabre_DAV_S3_Directory $parent = null, $bucket = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
 	{
 		$object = rtrim($object, '/');
 
-		parent::__construct($object, $parentnode, $bucket, $s3, $key, $secret_key, $region, $use_ssl);
+		parent::__construct($object, $parent, $bucket, $s3, $key, $secret_key, $region, $use_ssl);
 
 		$this->setContentType('');	//so that we do not have to query the Content-Type for every PROPFIND request
 	}
@@ -188,6 +188,8 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFile, Sa
 		);
 		if (!$response->isOK())
 			throw new Sabre_DAV_Exception('S3 DELETE Object failed', $response);
+
+		parent::delete();
 	}
 
 	/**

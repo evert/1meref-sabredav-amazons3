@@ -31,7 +31,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	 *
 	 * @var Sabre_DAV_S3_Directory
 	 */
-	protected $parentnode = null;
+	protected $parent = null;
 
 	/**
 	 * The Amazon S3 SDK instance for API calls
@@ -100,10 +100,10 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 
 	/**
 	 * Sets up the node, expects a full object name or null in case of the bucket itself
-	 * If $parentnode is not given, a bucket name and a S3 instance or Amazon credentials have to be given
+	 * If $parent is not given, a bucket name and a S3 instance or Amazon credentials have to be given
 	 *
 	 * @param string $object
-	 * @param Sabre_DAV_S3_Directory $parentnode
+	 * @param Sabre_DAV_S3_Directory $parent
 	 * @param string $bucket
 	 * @param AmazonS3 $s3
 	 * @param string $key
@@ -112,17 +112,17 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($object = null, Sabre_DAV_S3_Directory $parentnode = null, $bucket = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
+	public function __construct($object = null, Sabre_DAV_S3_Directory $parent = null, $bucket = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
 	{
 		if ($object === '')
 			$object = null;
 		$this->object = $object;
 
-		if (isset($parentnode))
+		if (isset($parent))
 		{
-			$this->parentnode = $parentnode;
-			$this->bucket = $parentnode->getBucket();
-			$this->s3 = $parentnode->getS3();
+			$this->parent = $parent;
+			$this->bucket = $parent->getBucket();
+			$this->s3 = $parent->getS3();
 		}
 
 		if (isset($bucket))
@@ -291,12 +291,12 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 			),
 			array
 			(
-				'storage' => $storage,
-				'acl' => $acl,
 				'headers' => array
 				(
 					'Content-Type' => $contenttype
-				)
+				),
+				'storage' => $storage,
+				'acl' => $acl
 			)
 		);
 		if (!$response->isOK())
@@ -310,7 +310,25 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 DELETE Object (Copy) failed', $response);
 
+		$oldName = $this->getName();
 		$this->object = $newObject;
+		if ($this->parent)
+		{
+			$this->parent->removeChild($oldName);
+			$this->parent->addChild($this);
+		}
+	}
+
+	/**
+	 * Deletes the node and removes it from it's parent's children collection
+	 *
+	 * @throws Sabre_DAV_S3_Exception
+	 * @return void
+	 */
+	public function delete()
+	{
+		if ($this->parent)
+			$this->parent->removeChild($this->getName());
 	}
 
 	/**
@@ -324,7 +342,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	}
 
 	/**
-	 * Returns the nodes object name within the Amazon bucket
+	 * Returns the node's object name within the Amazon bucket
 	 * 
 	 * @return string
 	 */
@@ -348,9 +366,20 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	 *
 	 * @return Sabre_DAV_S3_Directory
 	 */
-	public function getParentNode()
+	public function getParent()
 	{
-		return $this->parentnode;
+		return $this->parent;
+	}
+
+	/**
+	 * Sets this node's parent
+	 * 
+	 * @param Sabre_DAV_S3_Directory $node
+	 * @return void
+	 */
+	public function setParent(Sabre_DAV_S3_Directory $node)
+	{
+		$this->parent = $node;
 	}
 
 	/**

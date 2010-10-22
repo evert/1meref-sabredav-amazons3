@@ -17,14 +17,21 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 	 *
 	 * @var Sabre_DAV_S3_Node[]
 	 */
-	protected $children = null;
+	protected $children = array();
+
+	/**
+	 * Did we populate the list of children from S3?
+	 * 
+	 * @var bool
+	 */
+	protected $children_requested = false;
 
 	/**
 	 * Sets up the virtual directory, expects a full object name
-	 * If $parentnode is not given, a bucket name and a S3 instance or Amazon credentials have to be given
+	 * If $parent is not given, a bucket name and a S3 instance or Amazon credentials have to be given
 	 *
 	 * @param string $object
-	 * @param Sabre_DAV_S3_Directory $parentnode
+	 * @param Sabre_DAV_S3_Directory $parent
 	 * @param string $bucket
 	 * @param AmazonS3 $s3
 	 * @param string $key
@@ -33,12 +40,12 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($object, Sabre_DAV_S3_Directory $parentnode = null, $bucket = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
+	public function __construct($object, Sabre_DAV_S3_Directory $parent = null, $bucket = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
 	{
 		if (isset($object))
 			$object = rtrim($object, '/') . '/';
 
-		parent::__construct($object, $parentnode, $bucket, $s3, $key, $secret_key, $region, $use_ssl);
+		parent::__construct($object, $parent, $bucket, $s3, $key, $secret_key, $region, $use_ssl);
 
 		$this->setLastModified(0);
 		$this->setSize(0);
@@ -85,7 +92,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 
 		$node->put($data, $size, $type);
 
-		$this->children[$node->getName()] = $node;
+		$this->addChild($node);
 	}
 
 	/**
@@ -118,7 +125,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 		$node->setStorageClass($this->getStorageClass());
 		$node->setACL($this->getACL());
 
-		$this->children[$node->getName()] = $node;
+		$this->addChild($node);
 	}
 
 	/**
@@ -139,16 +146,34 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 	}
 
 	/**
-	 * Returns an array with all the child nodes
-	 *
-	 * @throws Sabre_DAV_S3_Exception
-	 * @return Sabre_DAV_INode[]
+	 * Add a child to the children collection
+	 * 
+	 * @param Sabre_DAV_S3_Node $node
+	 * @return void
 	 */
-	public function getChildren()
+	public function addChild(Sabre_DAV_S3_Node $node)
 	{
-		if (isset($this->children))
-			return $this->children;
+		$this->children[$node->getName()] = $node;
+	}
 
+	/**
+	 * Removes the child specified by it's name from the children collection.
+	 * 
+	 * @param string $name
+	 * @return void
+	 */
+	public function removeChild($name)
+	{
+		unset($this->children[$name]);
+	}
+
+	/**
+	 * Updates the children collection from S3
+	 * 
+	 * @return void
+	 */
+	protected function requestChildren()
+	{
 		$nodes = array();
 
 		$response = $this->s3->list_objects
@@ -225,20 +250,31 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 		}
 
 		$this->children = $nodes;
+	}
+
+	/**
+	 * Returns an array with all the child nodes
+	 *
+	 * @throws Sabre_DAV_S3_Exception
+	 * @return Sabre_DAV_INode[]
+	 */
+	public function getChildren()
+	{
+		if (!$this->children_requested)
+			$this->requestChildren();
+
 		return $this->children;
 	}
 
 	/**
-	 * Checks if a child exists.
+	 * Checks if a child exists
 	 *
 	 * @param string $name
 	 * @return bool
 	 */
 	public function childExists($name)
 	{
-		$name = rtrim($name, '/');
-
-		return array_key_exists($name, $this->getChildren());
+		return array_key_exists(rtrim($name, '/'), $this->getChildren());
 	}
 
 	/**
@@ -257,6 +293,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 		if (!$response)
 			throw new Sabre_DAV_S3_Exception('S3 DELETE Objects failed');
 
-		$this->children = null;
+		$this->children = array();
+		parent::delete();
 	}
 }
