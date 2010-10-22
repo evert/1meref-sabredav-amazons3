@@ -103,6 +103,7 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	/**
 	 * Deletes the entire bucket including versioning of files.
 	 * Be careful, this cannot be undone!!! However, not possible to invoke when buckets are root nodes.
+	 * @todo Check what happens when you request a move (copy and delete) of the root. Possible security issue!
 	 *
 	 * @throws Sabre_DAV_S3_Exception
 	 * @return void
@@ -117,6 +118,7 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 		if ($response === false || !$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 DELETE Bucket failed', $response);
 
-		$this->children = null;
+		$this->children = array();
+		parent::delete();
 	}
 }

@@ -34,7 +34,10 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 		parent::__construct($rootnode);
 
 		if (isset($rootnode))
+		{
+			$this->cache[''] = $rootnode;
 			$this->s3 = $rootnode->getS3();
+		}
 
 		if (isset($s3))
 			$this->s3 = $s3;
@@ -66,14 +69,29 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 		$parentNode = null;
 		$childNode = null;
 
-		if ($child !== '')
+		if ($child === '')
+			$childNode = $this->rootNode;
+		else
 		{
-			if (isset($this->cache[$parent]))
+			if ($parent === '')
+				$parentNode = $this->rootNode;
+			elseif (isset($this->cache[$parent]))
 				$parentNode = $this->cache[$parent];
 			else
 			{
-				if ($parent === '')
-					$parentNode = $this->rootNode;
+				list($grandparent, $parentName) = Sabre_DAV_URLUtil::splitPath($parent);
+				$grandparent = isset($grandparent) ? $grandparent : '';
+				$grandparentNode = null;
+				if ($grandparent === '')
+					$grandparentNode = $this->rootNode;
+				elseif (isset($this->cache[$grandparent]))
+					$grandparentNode = $this->cache[$grandparent];
+
+				if (isset($grandparentNode))
+				{
+					$parentNode = new Sabre_DAV_S3_Directory($grandparentNode->getObject() . $parentName, $grandparentNode);
+					$grandparentNode->addChild($parentNode);
+				}
 				else
 					$parentNode = new Sabre_DAV_S3_Directory($this->rootNode->getObject() . $parent, null, $this->rootNode->getBucket(), $this->s3);
 			}
@@ -87,8 +105,6 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 				throw new Sabre_DAV_Exception_FileNotFound('Could not find node at path: ' . $path);
 			}
 		}
-		else
-			$childNode = $this->rootNode;
 
 		if (isset($parentNode))
 			$this->cache[$parent] = $parentNode;
@@ -112,6 +128,74 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 		catch (Sabre_DAV_Exception_FileNotFound $e) {}
 
 		return false;
+	}
+
+	/**
+	 * Copies a node with native S3 requests
+	 *
+	 * @param Sabre_DAV_S3_Node $source
+	 * @param Sabre_DAV_S3_Directory $destination
+	 * @param string $destinationName
+	 * @return void
+	 */
+	protected function copyNode(Sabre_DAV_S3_Node $source, Sabre_DAV_S3_Directory $destinationParent, $destinationName = null)
+	{
+		if (!isset($destinationName) || $destinationName === '')
+			$destinationName = $source->getName();
+		
+		if ($source instanceof Sabre_DAV_S3_File)
+		{
+			//request storage and acl before content-type to provoke a requestMetaData if nessecary. Content-Type is set to an empty string, not null, in File constructor
+			$destination = new Sabre_DAV_S3_File($destinationParent->getObject() . $destinationName, $destinationParent);
+			$destination->setLastModified(time());
+			$destination->setSize($source->getSize());
+			$destination->setETag($source->getETag());
+			$destination->setStorageClass($source->getStorageClass());
+			$destination->setACL($source->getACL());
+			$destination->setContentType($source->getContentType());
+			
+			$s3 = $destinationParent->getS3();
+			if (!$s3)
+				$s3 = $this->s3;
+			$response = $s3->copy_object
+			(
+				array
+				(
+					'bucket' => $source->getBucket(),
+					'filename' => $source->getObject()
+				),
+				array
+				(
+					'bucket' => $destination->getBucket(),
+					'filename' => $destination->getObject()
+				),
+				array
+				(
+					'headers' => array
+					(
+						'Content-Type' => $destination->getContentType()
+					),
+					'storage' => $destination->getStorageClass(),
+					'acl' => $destination->getACL()
+				)
+			);
+			if (!$response->isOK())
+				throw new Sabre_DAV_S3_Exception('S3 PUT Object (Copy) failed', $response);
+			
+			$destinationParent->addChild($destination);
+		}
+		elseif ($source instanceof Sabre_DAV_S3_Directory)	//recurse into subdirectories
+		{
+			$destinationParent->createDirectory($destinationName);
+			$destination = $destinationParent->getChild($destinationName);
+			foreach ($source->getChildren() as $child)
+				$this->copyNode($child, $destination);	//recursion
+		}
+		if ($source instanceof Sabre_DAV_IProperties && $destination instanceof Sabre_DAV_IProperties)
+		{
+			$props = $source->getProperties(array());
+			$destination->updateProperties($props);
+		}
 	}
 
 	/**
