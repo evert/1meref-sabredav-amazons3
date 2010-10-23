@@ -121,17 +121,18 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFile, Sa
 
 		if (is_resource($data))
 		{
+			$uploadData = $data;
 			if (!isset($size) || $size < 0) //fall back: download stream, check size and then upload
 			{
-				$newData = fopen('php://temp', 'w+');
-				stream_copy_to_stream($data, $newData);
-				rewind($newData);
-				$stats = @fstat($newData);
+				$uploadData = fopen('php://temp', 'w+');
+				stream_copy_to_stream($data, $uploadData);
+				rewind($uploadData);
+				$stats = @fstat($uploadData);
 				$size = $stats['size'];
 				if (!isset($size) || $size < 0)
 					throw new Sabre_DAV_Exception_BadRequest('Content-Length for PUT cannot be determined');
 			}
-			$callback = new Sabre_DAV_S3_CurlStream($data, $size);
+			$callback = new Sabre_DAV_S3_CurlStream($uploadData, $size);
 			$opts['curlopts'] = array
 			(
 				CURLOPT_UPLOAD => true,
