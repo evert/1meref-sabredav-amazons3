@@ -21,7 +21,7 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 	 * Sets up the tree
 	 * S3 instance or Amazon credentials have to be given if $rootnode has no S3 instance 
 	 *
-	 * @param Sabre_DAV_S3_Directory $rootnode
+	 * @param Sabre_DAV_S3_ICollection $rootnode
 	 * @param string $s3
 	 * @param string $key
 	 * @param string $secret_key
@@ -29,7 +29,7 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct(Sabre_DAV_S3_Directory $rootnode, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
+	public function __construct(Sabre_DAV_S3_ICollection $rootnode, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
 	{
 		parent::__construct($rootnode);
 

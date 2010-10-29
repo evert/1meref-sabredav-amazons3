@@ -16,21 +16,35 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 * Either an existing S3 instance $s3, or $key and $secret_key have to be given
 	 *
 	 * @param string $bucket
-	 * @param string $storageclass [AmazonS3::STORAGE_STANDARD, AmazonS3::STORAGE_REDUCED] The default storage class for new objects. 
+	 * @param Sabre_DAV_S3_ICollection $parent
+	 * @param string $storageclass [AmazonS3::STORAGE_STANDARD, AmazonS3::STORAGE_REDUCED] The default Storage Redundancy settings for new Objects
+	 * @param string $acl [AmazonS3::ACL_PRIVATE, AmazonS3::ACL_PUBLIC, AmazonS3::ACL_OPEN, AmazonS3::ACL_AUTH_READ, AmazonS3::ACL_OWNER_READ, AmazonS3::ACL_OWNER_FULL_CONTROL] The default ACL for new Objects 
 	 * @param AmazonS3 $s3
 	 * @param string $key
 	 * @param string $secret_key
-	 * @param string $region [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1]
+	 * @param string $region [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1] The buckets endpoint Region
 	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($bucket, $storageclass = AmazonS3::STORAGE_STANDARD, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
+	public function __construct($bucket, $parent = null, $storageclass = null, $acl = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = null)
 	{
-		parent::__construct(null, null, $bucket, $s3, $key, $secret_key, $region, $use_ssl);
+		parent::__construct(null, $parent, $bucket, $s3, $key, $secret_key, $region, $use_ssl);
 
-		if (!$storageclass)
-			$storageclass = AmazonS3::STORAGE_STANDARD;
-		$this->setStorageClass($storageclass); //buckets unfortunately cannot have a default storage class set in S3
+		//default values
+		$this->setStorageClass(AmazonS3::STORAGE_STANDARD);
+		$this->setACL(AmazonS3::ACL_PRIVATE);
+		
+		if (isset($parent))
+		{
+			$this->setStorageClass($parent->getStorageClass());
+			$this->setACL($parent->getACL());
+		}
+
+		if (isset($storageclass))
+			$this->setStorageClass($storageclass);
+
+		if (isset($acl))
+			$this->setACL($acl);
 	}
 
 	/**
@@ -76,16 +90,6 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 		}
 
 		$this->metadata_requested = true;
-	}
-
-	/**
-	 * Returns the bucket's name
-	 *
-	 * @return string
-	 */
-	public function getName()
-	{
-		return $this->bucket;
 	}
 
 	/**
