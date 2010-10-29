@@ -8,15 +8,15 @@
  * @author Paul Voegler
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
-class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFile, Sabre_DAV_IFileStreamable
+class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, Sabre_DAV_IFileStreamable
 {
 
 	/**
-	 * Sets up the file, expects a full object name
-	 * If $parent is not given, a bucket name and a S3 instance or Amazon credentials have to be given
+	 * Sets up the file, expects a full Object name
+	 * If $parent is not given, a Bucket name and a S3 instance or Amazon credentials have to be given
 	 *
 	 * @param string $object
-	 * @param Sabre_DAV_S3_Directory $parent
+	 * @param Sabre_DAV_S3_ICollection $parent
 	 * @param string $bucket
 	 * @param AmazonS3 $s3
 	 * @param string $key
@@ -25,7 +25,7 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFile, Sa
 	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($object, Sabre_DAV_S3_Directory $parent = null, $bucket = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
+	public function __construct($object, Sabre_DAV_S3_ICollection $parent = null, $bucket = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = null)
 	{
 		$object = rtrim($object, '/');
 
@@ -75,7 +75,7 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFile, Sa
 		{
 			ob_end_clean();
 			if (headers_sent())
-				throw new Sabre_DAV_Exception('Content integrity cannot be ensured. Unexpected script output.');
+				throw new Sabre_DAV_Exception('Content integrity cannot be ensured! Unexpected script output');
 
 			$filehandle = fopen('php://output', 'w');
 			$callback = new Sabre_DAV_S3_CurlStream($filehandle);
@@ -98,7 +98,7 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFile, Sa
 
 	/**
 	 * Updates the data
-	 * In order for direct stream pass through to Amazon S3 to work, we have to know the stream size in advance.
+	 * In order for direct stream pass through to Amazon S3 to work, we have to know the stream size in advance
 	 *
 	 * @param resource $data
 	 * @param int $size Stream size of $data
@@ -175,7 +175,7 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Node implements Sabre_DAV_IFile, Sa
 	}
 
 	/**
-	 * Delete this object
+	 * Delete this Object
 	 *
 	 * @throws Sabre_DAV_S3_Exception
 	 * @return void

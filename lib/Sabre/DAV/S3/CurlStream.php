@@ -132,13 +132,15 @@ class Sabre_DAV_S3_CurlStream
 		{
 			if (!in_array((int)$matches[1], array(200, 206, 304, 307))) //307 is handled by AmazonS3->authenticate() to request again. Headers should not have been sent by then!?
 				throw new ErrorException('Unexpected status code (' . $matches[1] . ')');
-			$data = preg_replace('/^HTTP\/\d+\.\d+/i', $_SERVER['SERVER_PROTOCOL'], $data); //set our HTTP protocol version (Amazon is 1.1 but we could be 1.0)
+//			$data = preg_replace('/^HTTP\/\d+\.\d+/i', $_SERVER['SERVER_PROTOCOL'], $data); //set our HTTP protocol version (Amazon is 1.1 but we could be 1.0)
 		}
 		if (preg_match('/^[coneti]{10}\:/i', $data)) //strip out server or load balancer "Connection:" header
 			$data = null;
 		if (preg_match('/^[kep\-aliv]{10}\:/i', $data)) //strip out server or load balancer "Keep-Alive:" header
 			$data = null;
-
+		if (preg_match('/^Transfer\-Encoding\:/i', $data)) //strip out server "Transfer-Encoding:" header
+			$data = null;
+			
 		if (isset($data))
 			header($data, true);
 

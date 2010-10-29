@@ -10,7 +10,7 @@
  * @author Paul Voegler
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
-class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICollection
+class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3_ICollection
 {
 	/**
 	 * The node's child nodes
@@ -27,11 +27,11 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 	protected $children_requested = false;
 
 	/**
-	 * Sets up the virtual directory, expects a full object name
-	 * If $parent is not given, a bucket name and a S3 instance or Amazon credentials have to be given
+	 * Sets up the node as a virtual directory, expects a full Object name
+	 * If $parent is not given, a Bucket name and a S3 instance or Amazon credentials have to be given
 	 *
 	 * @param string $object
-	 * @param Sabre_DAV_S3_Directory $parent
+	 * @param Sabre_DAV_S3_ICollection $parent
 	 * @param string $bucket
 	 * @param AmazonS3 $s3
 	 * @param string $key
@@ -40,9 +40,9 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($object, Sabre_DAV_S3_Directory $parent = null, $bucket = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
+	public function __construct($object, Sabre_DAV_S3_ICollection $parent = null, $bucket = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = null)
 	{
-		if (isset($object))
+		if (isset($object) && $object !== '')
 			$object = rtrim($object, '/') . '/';
 
 		parent::__construct($object, $parent, $bucket, $s3, $key, $secret_key, $region, $use_ssl);
@@ -72,7 +72,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 	}
 
 	/**
-	 * Creates a new object in the virtual folder
+	 * Creates a new File/Object in the virtual folder
 	 *
 	 * @param string $name Name of the object within this virtual folder
 	 * @param resource $data Initial payload
@@ -96,7 +96,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 	}
 
 	/**
-	 * Creates a new subfolder
+	 * Creates a new virtual subfolder
 	 *
 	 * @param string $name Name of the virtual folder within this virtual folder
 	 * @throws Sabre_DAV_S3_Exception
@@ -148,16 +148,16 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Node implements Sabre_DAV_ICol
 	/**
 	 * Add a child to the children collection
 	 * 
-	 * @param Sabre_DAV_S3_Node $node
+	 * @param Sabre_DAV_S3_INode $node
 	 * @return void
 	 */
-	public function addChild(Sabre_DAV_S3_Node $node)
+	public function addChild(Sabre_DAV_S3_INode $node)
 	{
 		$this->children[$node->getName()] = $node;
 	}
 
 	/**
-	 * Removes the child specified by it's name from the children collection.
+	 * Removes the child specified by it's name from the children collection
 	 * 
 	 * @param string $name
 	 * @return void

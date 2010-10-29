@@ -9,22 +9,14 @@
  * @author Paul Voegler
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
-abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
+abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 {
 	/**
-	 * The Amazon S3 bucket holding objects
-	 *
+	 * The node's name
+	 * 
 	 * @var string
 	 */
-	protected $bucket = null;
-
-	/**
-	 * The object name to the current node as stored in S3
-	 * Includes the trailing "/" at the end of directories
-	 *
-	 * @var string
-	 */
-	protected $object = null;
+	protected $name = null;
 
 	/**
 	 * This node's parent node
@@ -48,27 +40,6 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	protected $metadata_requested = false;
 
 	/**
-	 * Size of the object
-	 *
-	 * @var int
-	 */
-	protected $size = null;
-
-	/**
-	 * ETag according to RFC 2616 with surrounding double quotes (")
-	 *
-	 * @var string
-	 */
-	protected $etag = null;
-
-	/**
-	 * The object's MIME-Type
-	 *
-	 * @var string
-	 */
-	protected $contenttype = null;
-
-	/**
 	 * Last modification time, if available
 	 *
 	 * @var int
@@ -76,22 +47,22 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	protected $lastmodified = null;
 
 	/**
-	 * S3 redundancy StorageClass used
+	 * S3 Storage Redundancy setting
 	 *
 	 * @var int
 	 */
 	protected $storageclass = null;
 
 	/**
-	 * The object's owner
+	 * The node's Owner
 	 * Associative array with 'ID' and 'DisplayName'
 	 *
 	 * @var array
 	 */
-	protected $owner;
+	protected $owner = null;
 
 	/**
-	 * The object's Access Control List (ACL)
+	 * The node's Access Control List (ACL)
 	 * String allowed values: [AmazonS3::ACL_PRIVATE, AmazonS3::ACL_PUBLIC, AmazonS3::ACL_OPEN, AmazonS3::ACL_AUTH_READ, AmazonS3::ACL_OWNER_READ, AmazonS3::ACL_OWNER_FULL_CONTROL]
 	 *
 	 * @var string
@@ -99,12 +70,19 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	protected $acl = null;
 
 	/**
-	 * Sets up the node, expects a full object name or null in case of the bucket itself
-	 * If $parent is not given, a bucket name and a S3 instance or Amazon credentials have to be given
+	 * The node's S3 endpoint Region
+	 * Valid values are [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1]
+	 * 
+	 * @var string 
+	 */
+	protected $region = null;
+
+	/**
+	 * Sets up the node
+	 * If $parent is not given, a S3 instance or Amazon credentials ($key, $secret_key) have to be given
 	 *
-	 * @param string $object
-	 * @param Sabre_DAV_S3_Directory $parent
-	 * @param string $bucket
+	 * @param string $name The node's display name returned by getName()
+	 * @param Sabre_DAV_S3_ICollection $parent
 	 * @param AmazonS3 $s3
 	 * @param string $key
 	 * @param string $secret_key
@@ -112,29 +90,32 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($object = null, Sabre_DAV_S3_Directory $parent = null, $bucket = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
+	public function __construct($name, Sabre_DAV_S3_ICollection $parent = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = true)
 	{
-		if ($object === '')
-			$object = null;
-		$this->object = $object;
+		$this->name = $name;
+
+		//default values
+		$this->region = AmazonS3::REGION_US_E1;
+		if (!isset($use_ssl))
+			$use_ssl = true;
 
 		if (isset($parent))
 		{
 			$this->parent = $parent;
-			$this->bucket = $parent->getBucket();
 			$this->s3 = $parent->getS3();
+			$this->region = $parent->getRegion();
 		}
-
-		if (isset($bucket))
-			$this->bucket = $bucket;
 
 		if (isset($s3))
 			$this->s3 = $s3;
 
+		if (isset($region))
+			$this->region = $region;
+
 		if (isset($key) && isset($secret_key))
 		{
 			$this->s3 = new AmazonS3($key, $secret_key);
-			$this->s3->set_region($region);
+			$this->s3->set_region($this->region);
 			if (!$use_ssl)
 				$this->s3->disable_ssl();
 		}
@@ -173,7 +154,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	protected function cannedACL($acl)
 	{
 		if (!is_array($acl))
-			return AmazonS3::ACL_PRIVATE;
+			return null;
 
 		$all = 0;
 		$auth = 0;
@@ -204,114 +185,25 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	}
 
 	/**
-	 * Retrieve the object's metadata from all possible sources (list, head, acl)
-	 *
-	 * @param bool $force
-	 * @return void
-	 */
-	public function requestMetaData($force = false)
-	{
-		if (!$force && $this->metadata_requested)
-			return;
-
-		$data = $this->s3->get_object_metadata
-		(
-			$this->bucket,
-			$this->object
-		);
-		if (!$data)
-			throw new Sabre_DAV_S3_Exception('S3 object metadata retrieve failed');
-		
-		if (isset($data['LastModified']))
-		{
-			$dt = new DateTime($data['LastModified']);
-			$this->setLastModified($dt->getTimestamp());
-		}
-		if (isset($data['ContentLength']))
-			$this->setSize((int)$data['ContentLength']);
-		if (isset($data['ETag']))
-			$this->setETag($data['ETag']);
-		if (isset($data['ContentType']))
-			$this->setContentType($data['ContentType']);
-		if (isset($data['StorageClass']))
-			$this->setStorageClass($data['StorageClass']);
-		if (!empty($data['Owner']))
-			$this->setOwner($data['Owner']);
-		if (!empty($data['ACL']))
-			$this->setACL($data['ACL']);
-
-		$this->metadata_requested = true;
-	}
-
-	/**
 	 * Returns the node's name
 	 *
 	 * @return string
 	 */
 	public function getName()
 	{
-		list(, $name) = Sabre_DAV_URLUtil::splitPath(rtrim($this->object, '/'));
-		return $name;
+		return $this->name;
 	}
 
 	/**
-	 * Sets the node's name. Renames the object in S3
+	 * Sets the node's name
 	 *
-	 * @param string $name The new name
-	 * @throws Sabre_DAV_Exception_MethodNotAllowed, Sabre_DAV_Exception_NotImplemented, Sabre_DAV_S3_Exception
+	 * @param string $name
 	 * @return void
 	 */
 	public function setName($name)
 	{
-		$name = rtrim($name, '/');
-
-		list($parentPath, ) = Sabre_DAV_URLUtil::splitPath(rtrim($this->object, '/'));
-		list(, $newName) = Sabre_DAV_URLUtil::splitPath($name);
-
-		$newObject = ($parentPath !== '' ? $parentPath . '/' : '') . $newName;
-		if ($this instanceof Sabre_DAV_S3_Directory)
-			$newObject .= '/';
-
-		//request storage and acl before content-type to provoke a requestMetaData if nessecary. Content-Type is set to an empty string, not null, in File constructor
-		$storage = $this->getStorageClass();
-		$acl = $this->getACL();
-		$contenttype = $this->getContentType();
-
-		$response = $this->s3->copy_object
-		(
-			array
-			(
-				'bucket' => $this->bucket,
-				'filename' => $this->object
-			),
-			array
-			(
-				'bucket' => $this->bucket,
-				'filename' => $newObject
-			),
-			array
-			(
-				'headers' => array
-				(
-					'Content-Type' => $contenttype
-				),
-				'storage' => $storage,
-				'acl' => $acl
-			)
-		);
-		if (!$response->isOK())
-			throw new Sabre_DAV_S3_Exception('S3 PUT Object (Copy) failed', $response);
-
-		$response = $this->s3->delete_object
-		(
-			$this->bucket,
-			$this->object
-		);
-		if (!$response->isOK())
-			throw new Sabre_DAV_S3_Exception('S3 DELETE Object (Copy) failed', $response);
-
-		$oldName = $this->getName();
-		$this->object = $newObject;
+		$oldName = $this->name;
+		$this->name = $name;
 		if ($this->parent)
 		{
 			$this->parent->removeChild($oldName);
@@ -322,33 +214,12 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	/**
 	 * Deletes the node and removes it from it's parent's children collection
 	 *
-	 * @throws Sabre_DAV_S3_Exception
 	 * @return void
 	 */
 	public function delete()
 	{
 		if ($this->parent)
-			$this->parent->removeChild($this->getName());
-	}
-
-	/**
-	 * Returns the node's bucket name
-	 *
-	 * @return string
-	 */
-	public function getBucket()
-	{
-		return $this->bucket;
-	}
-
-	/**
-	 * Returns the node's object name within the Amazon bucket
-	 * 
-	 * @return string
-	 */
-	public function getObject()
-	{
-		return $this->object;
+			$this->parent->removeChild($this->name);
 	}
 
 	/**
@@ -364,7 +235,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	/**
 	 * Returns the node's parent
 	 *
-	 * @return Sabre_DAV_S3_Directory
+	 * @return Sabre_DAV_S3_ICollection
 	 */
 	public function getParent()
 	{
@@ -374,16 +245,16 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	/**
 	 * Sets this node's parent
 	 * 
-	 * @param Sabre_DAV_S3_Directory $node
+	 * @param Sabre_DAV_S3_ICollection $node
 	 * @return void
 	 */
-	public function setParent(Sabre_DAV_S3_Directory $node)
+	public function setParent(Sabre_DAV_S3_ICollection $node)
 	{
 		$this->parent = $node;
 	}
 
 	/**
-	 * Returns the object's last modification time
+	 * Returns the node's last modification time
 	 *
 	 * @return int Unix timestamp
 	 */
@@ -396,7 +267,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	}
 
 	/**
-	 * Sets the object's last modification time
+	 * Sets the node's last modification time
 	 *
 	 * @param int $lastmodified Unix timestamp
 	 * @return void
@@ -407,81 +278,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	}
 
 	/**
-	 * Returns the object's size
-	 *
-	 * @return int
-	 */
-	public function getSize()
-	{
-		if (!isset($this->size))
-			$this->requestMetaData();
-
-		return $this->size;
-	}
-
-	/**
-	 * Sets the object's size
-	 *
-	 * @param int $size
-	 * @return void
-	 */
-	public function setSize($size)
-	{
-		$this->size = $size;
-	}
-
-	/**
-	 * Returns the object's MIME-Type
-	 *
-	 * @return string
-	 */
-	public function getContentType()
-	{
-		if (!isset($this->contenttype))
-			$this->requestMetaData();
-
-		return $this->contenttype;
-	}
-
-	/**
-	 * Sets the object's MIME-Type
-	 *
-	 * @param $contenttype
-	 * @return void
-	 */
-	public function setContentType($contenttype)
-	{
-		$this->contenttype = $contenttype;
-	}
-
-	/**
-	 * Returns the object's ETag
-	 * An ETag is a unique identifier representing the current version of the file. If the file changes, the ETag MUST change.
-	 * ETags are according to RFC 2616 with surrounding double quotes (")
-	 *
-	 * @return string
-	 */
-	public function getETag()
-	{
-		if (!isset($this->etag))
-			$this->requestMetaData();
-
-		return $this->etag;
-	}
-
-	/**
-	 * Sets the object's ETag
-	 *
-	 * @param $etag
-	 * @return void
-	 */
-	public function setETag($etag)
-	{
-		$this->etag = $etag;
-	}
-
-	/**
-	 * Gets the object's StorageClass
+	 * Returns the node's Storage Redundancy setting or it's default for child nodes
 	 *
 	 * @return string
 	 */
@@ -494,7 +291,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	}
 
 	/**
-	 * Sets the object's StorageClass
+	 * Sets the node's Storage Redundancy setting or it's default for child nodes
 	 *
 	 * @param string $storageclass
 	 * @return void
@@ -505,7 +302,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	}
 
 	/**
-	 * Gets the object's owner
+	 * Returns the node's Owner
 	 *
 	 * @return array Associative array with 'ID' and 'DisplayName'
 	 */
@@ -518,9 +315,10 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	}
 
 	/**
-	 * Sets the object's owner
+	 * Sets the node's Owner
 	 *
 	 * @param array $owner
+	 * @return void
 	 */
 	public function setOwner($owner)
 	{
@@ -528,7 +326,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	}
 
 	/**
-	 * Gets the object's canned ACL
+	 * Returns the node's Canned ACL
 	 *
 	 * @return string [AmazonS3::ACL_PRIVATE, AmazonS3::ACL_PUBLIC, AmazonS3::ACL_OPEN, AmazonS3::ACL_AUTH_READ, AmazonS3::ACL_OWNER_READ, AmazonS3::ACL_OWNER_FULL_CONTROL]
 	 */
@@ -541,9 +339,9 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 	}
 
 	/**
-	 * Sets the object's canned ACL
+	 * Sets the node's Canned ACL
 	 *
-	 * @param string | array $acl Allowed values: [AmazonS3::ACL_PRIVATE, AmazonS3::ACL_PUBLIC, AmazonS3::ACL_OPEN, AmazonS3::ACL_AUTH_READ, AmazonS3::ACL_OWNER_READ, AmazonS3::ACL_OWNER_FULL_CONTROL] or an array of associative arrays with keys 'id' and 'permission'
+	 * @param string|array $acl Allowed values: [AmazonS3::ACL_PRIVATE, AmazonS3::ACL_PUBLIC, AmazonS3::ACL_OPEN, AmazonS3::ACL_AUTH_READ, AmazonS3::ACL_OWNER_READ, AmazonS3::ACL_OWNER_FULL_CONTROL] or an array of associative arrays with keys 'id' and 'permission'
 	 * @return void
 	 */
 	public function setACL($acl)
@@ -552,5 +350,29 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_INode
 			$this->acl = $this->cannedACL($acl);
 		else
 			$this->acl = $acl;
+	}
+
+	/**
+	 * Returns the node's S3 endpoint Region or it's default setting for child nodes
+	 * 
+	 * @return string
+	 */
+	public function getRegion()
+	{
+		return $this->region;
+	}
+
+	/**
+	 * Sets the node's S3 endpoint Region or it's default setting for child nodes
+	 * 
+	 * @param string $region Valid values are [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1] 
+	 * @return void
+	 */
+	public function setRegion($region)
+	{
+		$this->region = $region;
+		
+		if ($this->s3)
+			$this->s3->set_region($region);
 	}
 }
