@@ -33,6 +33,14 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	protected $s3 = null;
 
 	/**
+	 * The node's S3 endpoint Region
+	 * Valid values are [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1]
+	 * 
+	 * @var string 
+	 */
+	protected $region = null;
+
+	/**
 	 * Indicates if the full set of metadata including ACL has been requested
 	 *
 	 * @var bool
@@ -70,14 +78,6 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	protected $acl = null;
 
 	/**
-	 * The node's S3 endpoint Region
-	 * Valid values are [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1]
-	 * 
-	 * @var string 
-	 */
-	protected $region = null;
-
-	/**
 	 * Sets up the node
 	 * If $parent is not given, a S3 instance or Amazon credentials ($key, $secret_key) have to be given
 	 *
@@ -90,7 +90,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($name, Sabre_DAV_S3_ICollection $parent = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = true)
+	public function __construct($name, Sabre_DAV_S3_ICollection $parent = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
 	{
 		$this->name = $name;
 
@@ -185,6 +185,35 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	}
 
 	/**
+	 * Retrieve the node's metadata
+	 *
+	 * @param bool $force
+	 * @return void
+	 */
+	protected function requestMetaData($force = false)
+	{
+		if (!$force && $this->metadata_requested)
+			return;
+			
+		if (!isset($this->lastmodified))
+			$this->setLastModified(0);
+/*		if (!isset($this->size))
+			$this->setSize(0);
+		if (!isset($this->etag))
+			$this->setETag('');
+		if (!isset($this->contenttype))
+			$this->setContentType('');*/
+		if (!isset($this->storageclass))
+			$this->setStorageClass(AmazonS3::STORAGE_STANDARD);
+		if (!isset($this->owner))
+			$this->setOwner(array());
+		if (!isset($this->acl))
+			$this->setACL(AmazonS3::ACL_PRIVATE);
+
+		$this->metadata_requested = true;
+	}
+
+	/**
 	 * Returns the node's name
 	 *
 	 * @return string
@@ -212,27 +241,6 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	}
 
 	/**
-	 * Deletes the node and removes it from it's parent's children collection
-	 *
-	 * @return void
-	 */
-	public function delete()
-	{
-		if ($this->parent)
-			$this->parent->removeChild($this->name);
-	}
-
-	/**
-	 * Returns the node's S3 instance
-	 *
-	 * @return AmazonS3
-	 */
-	public function getS3()
-	{
-		return $this->s3;
-	}
-
-	/**
 	 * Returns the node's parent
 	 *
 	 * @return Sabre_DAV_S3_ICollection
@@ -251,6 +259,51 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	public function setParent(Sabre_DAV_S3_ICollection $node)
 	{
 		$this->parent = $node;
+
+		if (isset($node))
+		{
+			if (!isset($this->s3))
+				$this->s3 = $node->getS3();
+			if (!isset($this->region))
+				$this->region = $node->getRegion();
+		}
+	}
+
+	/**
+	 * Returns the node's S3 instance
+	 *
+	 * @return AmazonS3
+	 */
+	public function getS3()
+	{
+		if (isset($this->s3) && isset($this->region))
+			$this->s3->set_region($this->region);
+
+		return $this->s3;
+	}
+
+	/**
+	 * Returns the node's S3 endpoint Region or it's default setting for child nodes
+	 * 
+	 * @return string
+	 */
+	public function getRegion()
+	{
+		return $this->region;
+	}
+
+	/**
+	 * Sets the node's S3 endpoint Region or it's default setting for child nodes
+	 * 
+	 * @param string $region Valid values are [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1] 
+	 * @return void
+	 */
+	public function setRegion($region)
+	{
+		$this->region = $region;
+		
+		if ($this->s3)
+			$this->s3->set_region($region);
 	}
 
 	/**
@@ -353,26 +406,13 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	}
 
 	/**
-	 * Returns the node's S3 endpoint Region or it's default setting for child nodes
-	 * 
-	 * @return string
-	 */
-	public function getRegion()
-	{
-		return $this->region;
-	}
-
-	/**
-	 * Sets the node's S3 endpoint Region or it's default setting for child nodes
-	 * 
-	 * @param string $region Valid values are [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1] 
+	 * Deletes the node and removes it from it's parent's children collection
+	 *
 	 * @return void
 	 */
-	public function setRegion($region)
+	public function delete()
 	{
-		$this->region = $region;
-		
-		if ($this->s3)
-			$this->s3->set_region($region);
+		if ($this->parent)
+			$this->parent->removeChild($this->name);
 	}
 }

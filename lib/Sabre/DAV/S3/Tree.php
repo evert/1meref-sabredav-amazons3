@@ -18,6 +18,14 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 	protected $s3 = null;
 
 	/**
+	 * The default S3 endpoint Region
+	 * Valid values are [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1]
+	 * 
+	 * @var string 
+	 */
+	protected $region = null;
+
+	/**
 	 * Sets up the tree
 	 * S3 instance or Amazon credentials have to be given if $rootnode has no S3 instance 
 	 *
@@ -33,19 +41,28 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 	{
 		parent::__construct($rootnode);
 
+		//default values
+		$this->region = AmazonS3::REGION_US_E1;
+		if (!isset($use_ssl))
+			$use_ssl = true;
+
 		if (isset($rootnode))
 		{
 			$this->cache[''] = $rootnode;
 			$this->s3 = $rootnode->getS3();
+			$this->region = $rootnode->getRegion();
 		}
 
 		if (isset($s3))
 			$this->s3 = $s3;
+			
+		if (isset($region))
+			$this->region = $region;
 
 		if (isset($key) && isset($secret_key))
 		{
 			$this->s3 = new AmazonS3($key, $secret_key);
-			$this->s3->set_region($region);
+			$this->s3->set_region($this->region);
 			if (!$use_ssl)
 				$this->s3->disable_ssl();
 		}
@@ -63,39 +80,95 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 		if (isset($this->cache[$path]))
 			return $this->cache[$path];
 
-		list($parent, $child) = Sabre_DAV_URLUtil::splitPath($path);
+		$bucket = null;
+		$pathprefix = '';
+		$objectpath = $path;
+		if ($this->rootNode instanceof Sabre_DAV_S3_Account)
+		{
+			$p = strpos($path, '/');
+			if ($p !== false)
+			{
+				$bucket = substr($path, 0, $p);
+				$pathprefix = $bucket . '/';
+				$objectpath = substr($path, $p + 1);
+			}
+			else
+			{
+				$bucket = $path;
+				$pathprefix = $bucket . '/';
+				$objectpath = '';
+			}
+		}
+		else
+			$bucket = $this->rootNode->getBucket();
+
+		list($parent, $child) = Sabre_DAV_URLUtil::splitPath($objectpath);
 		$parent = isset($parent) ? $parent : '';
 		$child = isset($child) ? $child : '';
 		$parentNode = null;
 		$childNode = null;
 
-		if ($child === '')
-			$childNode = $this->rootNode;
-		else
-		{
-			if ($parent === '')
-				$parentNode = $this->rootNode;
-			elseif (isset($this->cache[$parent]))
-				$parentNode = $this->cache[$parent];
+		if ($parent === '')
+		{ 
+			if ($pathprefix === '')
+			{
+				if ($child === '')	//case "/"
+					$childNode = $this->rootNode;
+				else	//case "/object"
+					$parentNode = $this->rootNode;
+			}
 			else
 			{
-				list($grandparent, $parentName) = Sabre_DAV_URLUtil::splitPath($parent);
-				$grandparent = isset($grandparent) ? $grandparent : '';
-				$grandparentNode = null;
-				if ($grandparent === '')
-					$grandparentNode = $this->rootNode;
-				elseif (isset($this->cache[$grandparent]))
-					$grandparentNode = $this->cache[$grandparent];
-
-				if (isset($grandparentNode))
+				if ($child === '')	//case "/bucket"
 				{
-					$parentNode = new Sabre_DAV_S3_Directory($grandparentNode->getObject() . $parentName, $grandparentNode);
-					$grandparentNode->addChild($parentNode);
+					$parentNode = $this->rootNode;
+					//easiest way to get the child node and set the cache correctly
+					$child = $bucket;
+					$pathprefix = '';
 				}
-				else
-					$parentNode = new Sabre_DAV_S3_Directory($this->rootNode->getObject() . $parent, null, $this->rootNode->getBucket(), $this->s3);
+				else	//case "/bucket/object"
+				{
+					if (isset($this->cache[$bucket]))
+						$parentNode = $this->cache[$bucket];
+					else
+					{
+						$parentNode = new Sabre_DAV_S3_Bucket($bucket, $this->rootNode);
+						$this->rootNode->addChild($parentNode);
+					}
+				}
 			}
+		}
+		else	//case "/folder[/subfolder]/object" and "/bucket/folder[/subfolder]/object"
+		{
+			list($grandparent, $parentName) = Sabre_DAV_URLUtil::splitPath($parent);
+			$grandparent = isset($grandparent) ? $grandparent : '';
+			$parentName = isset($parentName) ? $parentName : '';
+			$grandparentNode = null;
+			if ($grandparent === '')
+			{
+				if ($pathprefix === '')	//case "/folder/object"
+					$grandparentNode = $this->rootNode;
+				elseif (isset($this->cache[$bucket]))	//case "/bucket/folder/object"
+					$grandparentNode = $this->cache[$bucket];
+			}
+			elseif (isset($this->cache[$pathprefix . $grandparent]))	//case "/folder/subfolder/object" and "/bucket/folder/subfolder/object"
+				$grandparentNode = $this->cache[$pathprefix . $grandparent];
 
+			if (isset($grandparentNode))
+			{
+				$objectprefix = $grandparentNode instanceof Sabre_DAV_S3_Object ? $grandparentNode->getObject() : '';
+				$parentNode = new Sabre_DAV_S3_Directory($objectprefix . $parentName, $grandparentNode);
+				$grandparentNode->addChild($parentNode);
+			}
+			else
+			{
+				$objectprefix = $this->rootNode instanceof Sabre_DAV_S3_Object ? $this->rootNode->getObject() : '';
+				$parentNode = new Sabre_DAV_S3_Directory($objectprefix . $parent, null, $bucket, $this->s3, null, null, $this->region, null);
+			}
+		}
+
+		if (!isset($childNode) && isset($parentNode))
+		{
 			try
 			{
 				$childNode = $parentNode->getChild($child);
@@ -107,8 +180,8 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 		}
 
 		if (isset($parentNode))
-			$this->cache[$parent] = $parentNode;
-		$this->cache[($parent !== '' ? $parent . '/' : '') . $child] = $childNode;
+			$this->cache[$pathprefix . $parent] = $parentNode;
+		$this->cache[$pathprefix . ($parent !== '' ? $parent . '/' : '') . $child] = $childNode;
 
 		return $childNode;
 	}

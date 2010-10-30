@@ -2,7 +2,7 @@
 
 /**
  * Base class for S3 objects
- * The Object class implements the methods used both the File and the Directory class for S3 Objects
+ * The Object class implements the methods used by both the File and the Directory class for S3 Objects
  *
  * @package Sabre
  * @subpackage DAV
@@ -63,16 +63,15 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 	 */
 	public function __construct($object, Sabre_DAV_S3_ICollection $parent = null, $bucket = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = null)
 	{
-		$object = $object !== '' ? $object : null;
-
-		if (isset($object))
-			list(, $name) = Sabre_DAV_URLUtil::splitPath(rtrim($object, '/'));
+		$this->object = $object !== '' ? $object : null;;
+		
+		$name = null;
+		if (isset($this->object))
+			list(, $name) = Sabre_DAV_URLUtil::splitPath(rtrim($this->object, '/'));
 		else
-			$name = $this->bucket;
+			$name = $bucket;
 
 		parent::__construct($name, $parent, $s3, $key, $secret_key, $region, $use_ssl);
-
-		$this->object = $object;
 
 		if (isset($parent) && $parent instanceof Sabre_DAV_S3_Object)
 			$this->bucket = $parent->getBucket();
@@ -93,7 +92,7 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 		if (!$force && $this->metadata_requested)
 			return;
 
-		$data = $this->s3->get_object_metadata
+		$data = $this->getS3()->get_object_metadata
 		(
 			$this->bucket,
 			$this->object
@@ -131,12 +130,12 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 	 */
 	public function setName($name)
 	{
-		$name = rtrim($name, '/');
-
 		list($parentPath, ) = Sabre_DAV_URLUtil::splitPath(rtrim($this->object, '/'));
 		list(, $newName) = Sabre_DAV_URLUtil::splitPath($name);
+		$parentPath = isset($parentPath) ? $parentPath : '';
+		$newName = isset($newName) ? $newName : '';
 
-		$newObject = ((isset($parentPath) && $parentPath !== '') ? $parentPath . '/' : '') . $newName;
+		$newObject = ($parentPath !== '' ? ($parentPath . '/') : '') . $newName;
 		if ($this instanceof Sabre_DAV_S3_ICollection)
 			$newObject .= '/';
 
@@ -145,7 +144,7 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 		$acl = $this->getACL();
 		$contenttype = $this->getContentType();
 
-		$response = $this->s3->copy_object
+		$response = $this->getS3()->copy_object
 		(
 			array
 			(
@@ -170,7 +169,7 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 PUT Object (Copy) failed', $response);
 
-		$response = $this->s3->delete_object
+		$response = $this->getS3()->delete_object
 		(
 			$this->bucket,
 			$this->object
@@ -227,30 +226,6 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 	}
 
 	/**
-	 * Returns the Object's MIME-Type
-	 *
-	 * @return string
-	 */
-	public function getContentType()
-	{
-		if (!isset($this->contenttype))
-			$this->requestMetaData();
-
-		return $this->contenttype;
-	}
-
-	/**
-	 * Sets the Object's MIME-Type
-	 *
-	 * @param $contenttype
-	 * @return void
-	 */
-	public function setContentType($contenttype)
-	{
-		$this->contenttype = $contenttype;
-	}
-
-	/**
 	 * Returns the Object's ETag
 	 * An ETag is a unique identifier representing the current version of the file. If the file changes, the ETag MUST change.
 	 * As to RFC 2616 with surrounding double-quotes (")
@@ -274,5 +249,29 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 	public function setETag($etag)
 	{
 		$this->etag = $etag;
+	}
+
+	/**
+	 * Returns the Object's MIME-Type
+	 *
+	 * @return string
+	 */
+	public function getContentType()
+	{
+		if (!isset($this->contenttype))
+			$this->requestMetaData();
+
+		return $this->contenttype;
+	}
+
+	/**
+	 * Sets the Object's MIME-Type
+	 *
+	 * @param $contenttype
+	 * @return void
+	 */
+	public function setContentType($contenttype)
+	{
+		$this->contenttype = $contenttype;
 	}
 }
