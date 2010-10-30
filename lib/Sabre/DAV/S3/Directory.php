@@ -15,7 +15,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 	/**
 	 * The node's child nodes
 	 *
-	 * @var Sabre_DAV_S3_Node[]
+	 * @var Sabre_DAV_S3_INode[]
 	 */
 	protected $children = array();
 
@@ -49,8 +49,8 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 
 		$this->setLastModified(0);
 		$this->setSize(0);
-		$this->setContentType('');
 		$this->setETag('');
+		$this->setContentType('');
 	}
 
 	/**
@@ -83,7 +83,6 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 	 */
 	public function createFile($name, $data = null, $size = null, $type = null)
 	{
-		$name = rtrim($name, '/');
 		$newObject = $this->object . $name;
 
 		$node = new Sabre_DAV_S3_File($newObject, $this);
@@ -104,10 +103,9 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 	 */
 	public function createDirectory($name)
 	{
-		$name = rtrim($name, '/');
 		$newObject = $this->object . $name . '/';
 
-		$response = $this->s3->create_object
+		$response = $this->getS3()->create_object
 		(
 			$this->bucket,
 			$newObject,
@@ -129,45 +127,6 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 	}
 
 	/**
-	 * Returns a specific child node by it's name
-	 *
-	 * @param string $name
-	 * @throws Sabre_DAV_Exception_FileNotFound
-	 * @return Sabre_DAV_INode
-	 */
-	public function getChild($name)
-	{
-		$name = rtrim($name, '/');
-
-		if (!$this->childExists($name))
-			throw new Sabre_DAV_Exception_FileNotFound('S3 Object not found');
-
-		return $this->children[$name];
-	}
-
-	/**
-	 * Add a child to the children collection
-	 * 
-	 * @param Sabre_DAV_S3_INode $node
-	 * @return void
-	 */
-	public function addChild(Sabre_DAV_S3_INode $node)
-	{
-		$this->children[$node->getName()] = $node;
-	}
-
-	/**
-	 * Removes the child specified by it's name from the children collection
-	 * 
-	 * @param string $name
-	 * @return void
-	 */
-	public function removeChild($name)
-	{
-		unset($this->children[$name]);
-	}
-
-	/**
 	 * Updates the children collection from S3
 	 * 
 	 * @return void
@@ -176,7 +135,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 	{
 		$nodes = array();
 
-		$response = $this->s3->list_objects
+		$response = $this->getS3()->list_objects
 		(
 			$this->bucket,
 			array
@@ -250,6 +209,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 		}
 
 		$this->children = $nodes;
+		$this->children_requested = true;
 	}
 
 	/**
@@ -274,7 +234,44 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 	 */
 	public function childExists($name)
 	{
-		return array_key_exists(rtrim($name, '/'), $this->getChildren());
+		return array_key_exists($name, $this->getChildren());
+	}
+
+	/**
+	 * Returns a specific child node by it's name
+	 *
+	 * @param string $name
+	 * @throws Sabre_DAV_Exception_FileNotFound
+	 * @return Sabre_DAV_INode
+	 */
+	public function getChild($name)
+	{
+		if (!$this->childExists($name))
+			throw new Sabre_DAV_Exception_FileNotFound('S3 Object not found');
+
+		return $this->children[$name];
+	}
+
+	/**
+	 * Add a child to the children collection
+	 * 
+	 * @param Sabre_DAV_S3_INode $node
+	 * @return void
+	 */
+	public function addChild(Sabre_DAV_S3_INode $node)
+	{
+		$this->children[$node->getName()] = $node;
+	}
+
+	/**
+	 * Removes the child specified by it's name from the children collection
+	 * 
+	 * @param string $name
+	 * @return void
+	 */
+	public function removeChild($name)
+	{
+		unset($this->children[$name]);
 	}
 
 	/**
@@ -285,7 +282,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 	 */
 	public function delete()
 	{
-		$response = $this->s3->delete_all_objects
+		$response = $this->getS3()->delete_all_objects
 		(
 			$this->bucket,
 			'/^' . preg_quote($this->object, '/') . '.*$/'

@@ -27,8 +27,6 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 	 */
 	public function __construct($object, Sabre_DAV_S3_ICollection $parent = null, $bucket = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = null)
 	{
-		$object = rtrim($object, '/');
-
 		parent::__construct($object, $parent, $bucket, $s3, $key, $secret_key, $region, $use_ssl);
 
 		$this->setContentType('');	//so that we do not have to query the Content-Type for every PROPFIND request
@@ -59,7 +57,7 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 			$filehandle = fopen('php://temp', 'w+');
 			$opts['curlopts'][CURLOPT_FILE] = $filehandle;
 
-			$response = $this->s3->get_object
+			$response = $this->getS3()->get_object
 			(
 				$this->bucket,
 				$this->object,
@@ -82,7 +80,7 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 			$opts['curlopts'][CURLOPT_HEADERFUNCTION] = array($callback, 'header');
 			$opts['curlopts'][CURLOPT_WRITEFUNCTION] = array($callback, 'write');
 
-			$response = $this->s3->get_object($this->bucket, $this->object, $opts);
+			$response = $this->getS3()->get_object($this->bucket, $this->object, $opts);
 			if (!$response->isOK(array(200, 206)))
 				throw new Sabre_DAV_S3_Exception('S3 GET Object failed', $response);
 
@@ -91,7 +89,7 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 		/*		else
 		{
 			ob_end_clean();
-			header('Location: ' . $this->s3->get_object_url($this->bucket, $this->object, '3 minutes'), true, 302);
+			header('Location: ' . $this->getS3()->get_object_url($this->bucket, $this->object, '3 minutes'), true, 302);
 			exit;
 		}*/
 	}
@@ -158,7 +156,7 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 		if (isset($acl))
 			$opts['acl'] = $acl;
 
-		$response = $this->s3->create_object
+		$response = $this->getS3()->create_object
 		(
 			$this->bucket,
 			$this->object,
@@ -175,25 +173,6 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 	}
 
 	/**
-	 * Delete this Object
-	 *
-	 * @throws Sabre_DAV_S3_Exception
-	 * @return void
-	 */
-	public function delete()
-	{
-		$response = $this->s3->delete_object
-		(
-			$this->bucket,
-			$this->object
-		);
-		if (!$response->isOK())
-			throw new Sabre_DAV_Exception('S3 DELETE Object failed', $response);
-
-		parent::delete();
-	}
-
-	/**
 	 * Guesses the MIME-Type for an object by it's extension
 	 * Returns application/octet-stream if unknown
 	 *
@@ -206,5 +185,24 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 		$mime_type = CFMimeTypes::get_mimetype($extension);
 
 		return $mime_type;
+	}
+
+	/**
+	 * Delete this Object
+	 *
+	 * @throws Sabre_DAV_S3_Exception
+	 * @return void
+	 */
+	public function delete()
+	{
+		$response = $this->getS3()->delete_object
+		(
+			$this->bucket,
+			$this->object
+		);
+		if (!$response->isOK())
+			throw new Sabre_DAV_Exception('S3 DELETE Object failed', $response);
+
+		parent::delete();
 	}
 }

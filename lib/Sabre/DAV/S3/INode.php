@@ -12,15 +12,7 @@ interface Sabre_DAV_S3_INode extends Sabre_DAV_INode
 {
 
 	/**
-	 * Returns the node's S3 instance
-	 *
-	 * @return AmazonS3
-	 */
-	public function getS3();
-
-	/**
 	 * Returns the node's parent
-	 * Returns null if root node or parent not known
 	 *
 	 * @return Sabre_DAV_S3_ICollection
 	 */
@@ -33,6 +25,28 @@ interface Sabre_DAV_S3_INode extends Sabre_DAV_INode
 	 * @return void
 	 */
 	public function setParent(Sabre_DAV_S3_ICollection $node);
+
+	/**
+	 * Returns the node's S3 instance
+	 *
+	 * @return AmazonS3
+	 */
+	public function getS3();
+
+	/**
+	 * Returns the node's S3 endpoint Region or it's default setting for child nodes
+	 * 
+	 * @return string
+	 */
+	public function getRegion();
+
+	/**
+	 * Sets the node's S3 endpoint Region or it's default setting for child nodes
+	 * 
+	 * @param string $region Valid values are [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1] 
+	 * @return void
+	 */
+	public function setRegion($region);
 
 	/**
 	 * Sets the node's last modification time
@@ -86,19 +100,4 @@ interface Sabre_DAV_S3_INode extends Sabre_DAV_INode
 	 * @return void
 	 */
 	public function setACL($acl);
-
-	/**
-	 * Gets the node's S3 endpoint Region or it's default setting for child nodes
-	 * 
-	 * @return string
-	 */
-	public function getRegion();
-
-	/**
-	 * Sets the node's S3 endpoint Region or it's default setting for child nodes
-	 * 
-	 * @param string $region Valid values are [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1] 
-	 * @return void
-	 */
-	public function setRegion($region);
 }

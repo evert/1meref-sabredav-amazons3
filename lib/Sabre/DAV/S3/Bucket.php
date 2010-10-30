@@ -53,12 +53,12 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 * @param bool $force
 	 * @return void
 	 */
-	public function requestMetaData($force = false)
+	protected function requestMetaData($force = false)
 	{
 		if (!$force && $this->metadata_requested)
 			return;
 
-		$response = $this->s3->get_bucket_acl($this->bucket);
+		$response = $this->getS3()->get_bucket_acl($this->bucket);
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 Bucket metadata retrieve failed');
 
@@ -114,7 +114,10 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 */
 	public function delete()
 	{
-		$response = $this->s3->delete_bucket
+		if ($this->parent && $this->parent instanceof Sabre_DAV_S3_Account && $this->parent->isReadonly())
+			throw new Sabre_DAV_Exception_MethodNotAllowed('S3 Account is read only');
+
+		$response = $this->getS3()->delete_bucket
 		(
 			$this->bucket,
 			true
