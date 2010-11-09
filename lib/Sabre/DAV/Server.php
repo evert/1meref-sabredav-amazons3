@@ -462,14 +462,18 @@ class Sabre_DAV_Server {
         if (!$this->checkPreconditions(true)) return false; 
 
         if (!($node instanceof Sabre_DAV_IFile)) throw new Sabre_DAV_Exception_NotImplemented('GET is only implemented on File objects');
-        $body = $node->get();
+        if (!($node instanceof Sabre_DAV_IFileStreamable)) {
 
-        // Converting string into stream, if needed.
-        if (is_string($body)) {
-            $stream = fopen('php://temp','r+');
-            fwrite($stream,$body);
-            rewind($stream);
-            $body = $stream;
+            $body = $node->get();
+
+            // Converting string into stream, if needed.
+            if (is_string($body)) {
+                $stream = fopen('php://temp','r+');
+                fwrite($stream,$body);
+                rewind($stream);
+                $body = $stream;
+            }
+
         }
 
         /*
@@ -551,23 +555,35 @@ class Sabre_DAV_Server {
 
             }
 
-            // New read/write stream
-            $newStream = fopen('php://temp','r+');
-
-            stream_copy_to_stream($body, $newStream, $end-$start+1, $start);
-            rewind($newStream);
-
             $this->httpResponse->setHeader('Content-Length', $end-$start+1);
             $this->httpResponse->setHeader('Content-Range','bytes ' . $start . '-' . $end . '/' . $nodeSize);
             $this->httpResponse->sendStatus(206);
-            $this->httpResponse->sendBody($newStream);
 
+            if (!($node instanceof Sabre_DAV_IFileStreamable)) {
+
+                // New read/write stream
+                $newStream = fopen('php://temp','r+');
+
+                stream_copy_to_stream($body, $newStream, $end-$start+1, $start);
+                rewind($newStream);
+
+                $this->httpResponse->sendBody($newStream);
+
+            } else {
+
+                $node->get(true, $start, $end);
+
+            }
 
         } else {
 
             if ($nodeSize) $this->httpResponse->setHeader('Content-Length',$nodeSize);
             $this->httpResponse->sendStatus(200);
-            $this->httpResponse->sendBody($body);
+
+            if (!($node instanceof Sabre_DAV_IFileStreamable))
+                $this->httpResponse->sendBody($body);
+            else
+                $node->get(true);
 
         }
 
@@ -690,6 +706,8 @@ class Sabre_DAV_Server {
     protected function httpPut($uri) {
 
         $body = $this->httpRequest->getBody();
+        $size = $this->httpRequest->getRawServerValue('CONTENT_LENGTH');
+        $type = $this->httpRequest->getRawServerValue('CONTENT_TYPE');
 
         // Intercepting the Finder problem
         if (($expected = $this->httpRequest->getHeader('X-Expected-Entity-Length')) && $expected > 0) {
@@ -730,6 +748,8 @@ class Sabre_DAV_Server {
             rewind($newBody);
 
             $body = $newBody;
+            $stats = fstat($newBody);
+            $size = $stats['size'];
 
         }
 
@@ -744,14 +764,14 @@ class Sabre_DAV_Server {
             if (!($node instanceof Sabre_DAV_IFile)) throw new Sabre_DAV_Exception_Conflict('PUT is not allowed on non-files.');
             if (!$this->broadcastEvent('beforeWriteContent',array($this->getRequestUri()))) return false;
 
-            $node->put($body);
+            $node->put($body,$size,$type);
             $this->httpResponse->setHeader('Content-Length','0');
             $this->httpResponse->sendStatus(200);
 
         } else {
 
             // If we got here, the resource didn't exist yet.
-            $this->createFile($this->getRequestUri(),$body);
+            $this->createFile($this->getRequestUri(),$body,$size,$type);
             $this->httpResponse->setHeader('Content-Length','0');
             $this->httpResponse->sendStatus(201);
 
@@ -1323,17 +1343,19 @@ class Sabre_DAV_Server {
      * 
      * @param string $uri 
      * @param resource $data 
+     * @param int $size 
+     * @param string $type 
      * @return void
      */
-    public function createFile($uri,$data) {
+    public function createFile($uri,$data,$size,$type) {
 
         list($dir,$name) = Sabre_DAV_URLUtil::splitPath($uri);
 
         if (!$this->broadcastEvent('beforeBind',array($uri))) return;
-        if (!$this->broadcastEvent('beforeCreateFile',array($uri,$data))) return;
+        if (!$this->broadcastEvent('beforeCreateFile',array($uri,$data,$size,$type))) return;
 
         $parent = $this->tree->getNodeForPath($dir);
-        $parent->createFile($name,$data);
+        $parent->createFile($name,$data,$size,$type);
         $this->tree->markDirty($dir);
 
         $this->broadcastEvent('afterBind',array($uri));
