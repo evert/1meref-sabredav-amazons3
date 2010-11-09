@@ -206,12 +206,12 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 	/**
 	 * Copies a node with native S3 requests
 	 *
-	 * @param Sabre_DAV_S3_Node $source
-	 * @param Sabre_DAV_S3_Directory $destination
+	 * @param Sabre_DAV_S3_INode $source
+	 * @param Sabre_DAV_S3_ICollection $destination
 	 * @param string $destinationName
 	 * @return void
 	 */
-	protected function copyNode(Sabre_DAV_S3_Node $source, Sabre_DAV_S3_Directory $destinationParent, $destinationName = null)
+	protected function copyNode(Sabre_DAV_S3_INode $source, Sabre_DAV_S3_ICollection $destinationParent, $destinationName = null)
 	{
 		if (!isset($destinationName) || $destinationName === '')
 			$destinationName = $source->getName();
@@ -257,7 +257,7 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 			
 			$destinationParent->addChild($destination);
 		}
-		elseif ($source instanceof Sabre_DAV_S3_Directory)	//recurse into subdirectories
+		elseif ($source instanceof Sabre_DAV_S3_ICollection)	//recurse into subdirectories
 		{
 			$destinationParent->createDirectory($destinationName);
 			$destination = $destinationParent->getChild($destinationName);
@@ -279,5 +279,10 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 	public function getS3()
 	{
 		return $this->s3;
+	}
+	
+	protected function buildTree($path)
+	{
+		$tree = $this->getS3()->list_objects($this->rootNode->getBucket());
 	}
 }
