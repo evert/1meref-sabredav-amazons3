@@ -229,7 +229,7 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 			
 			$s3 = $destinationParent->getS3();
 			if (!$s3)
-				$s3 = $this->s3;
+				$s3 = $this->getS3();
 			$response = $s3->copy_object
 			(
 				array
@@ -278,11 +278,9 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 	 */
 	public function getS3()
 	{
+		if (isset($this->s3) && isset($this->region))
+			$this->s3->set_region($this->region);
+
 		return $this->s3;
-	}
-	
-	protected function buildTree($path)
-	{
-		$tree = $this->getS3()->list_objects($this->rootNode->getBucket());
 	}
 }
