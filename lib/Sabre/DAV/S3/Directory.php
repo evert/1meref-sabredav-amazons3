@@ -128,10 +128,11 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 
 	/**
 	 * Updates the children collection from S3
-	 * 
+	 *
+	 * @param bool $fulltree If true, all subdirectories will also be parsed, only the current path otherwise
 	 * @return void
 	 */
-	protected function requestChildren()
+	public function requestChildren($fulltree = false)
 	{
 		$nodes = array();
 
@@ -141,7 +142,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 			array
 			(
 				'prefix' => $this->object,
-				'delimiter' => '/'
+				'delimiter' => ($fulltree ? '' : '/')
 			)
 		);
 		if (!$response->isOK())
@@ -149,43 +150,34 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 
 		if ($response->body)
 		{
-			if ($response->body->CommonPrefixes)
-			{
-				foreach ($response->body->CommonPrefixes as $folder)
-				{
-					$node = new Sabre_DAV_S3_Directory((string)$folder->Prefix, $this);
-					$nodes[$node->getName()] = $node;
-				}
-			}
-
 			if ($response->body->Contents)
 			{
-				foreach ($response->body->Contents as $file)
+				foreach ($response->body->Contents as $object)
 				{
 					$lastmodified = null;
-					if (isset($file->LastModified))
+					if (isset($object->LastModified))
 					{
-						$dt = new DateTime((string)$file->LastModified);
+						$dt = new DateTime((string)$object->LastModified);
 						$lastmodified = $dt->getTimestamp();
 					}
 
 					$size = null;
-					if (isset($file->Size))
-						$size = (int)$file->Size;
+					if (isset($object->Size))
+						$size = (int)$object->Size;
 
 					$etag = null;
-					if (isset($file->ETag))
-						$etag = (string)$file->ETag;
+					if (isset($object->ETag))
+						$etag = (string)$object->ETag;
 
 					$owner = null;
-					if (isset($file->Owner))
+					if (isset($object->Owner))
 					{
 						$owner = array();
-						$owner['ID'] = (string)$file->Owner->ID;
-						$owner['DisplayName'] = (string)$file->Owner->DisplayName;
+						$owner['ID'] = (string)$object->Owner->ID;
+						$owner['DisplayName'] = (string)$object->Owner->DisplayName;
 					}
 
-					if (substr($file->Key, -1, 1) === '/') //This virtual folder. Usually an empty object, if present. But it could also hold data like any other object... not accessible here!
+					if ($object->Key == $this->object) //This virtual folder. Usually an empty object, if present. But it could also hold data like any other object... not accessible here!
 					{
 						$this->setLastModified($lastmodified);
 						$this->setSize($size);
@@ -194,22 +186,75 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 					}
 					else
 					{
-						$node = new Sabre_DAV_S3_File((string)$file->Key, $this);
-						if (!array_key_exists($node->getName(), $nodes)) //just skip files with the same name as a folder (file "somefilefolder" and folder "somefilefolder/")... not accessible here!
+						$subkey = substr((string)$object->Key, strlen($this->object));	//strip common path prefix
+						$subkeyparts = null;
+						preg_match_all('/.*?(?:\/|$)/', $subkey, $subkeyparts);
+						$subkeyparts = $subkeyparts[0];
+						array_pop($subkeyparts);	//remove last empty element so we can use .*? instead of .+? in pattern
+
+						$subkey = '';
+						$parent = null;
+						foreach ($subkeyparts as $keypart)	//heavyly relies on the list being sorted!
 						{
-							$node->setLastModified($lastmodified);
-							$node->setSize($size);
-							$node->setETag($etag);
-							$node->setOwner($owner);
-							$nodes[$node->getName()] = $node;
+							if ($parent === null)
+								$parent = $this;
+							else
+							{
+								if (array_key_exists($subkey, $nodes))
+									$parent = $nodes[$subkey];
+								else
+								{
+									$node = new Sabre_DAV_S3_Directory($this->getObject() . $subkey, $parent);
+									$parent->addChild($node);
+									$nodes[$subkey] = $node;
+									$parent = $node;
+								}
+							}
+							
+							$subkey .= $keypart;
+							if (substr($subkey, -1, 1) === '/')
+								$node = new Sabre_DAV_S3_Directory($this->getObject() . $subkey, $parent);
+							elseif (!array_key_exists($subkey . '/', $nodes))	//just skip files with the same name as a folder (file "somefilefolder" and folder "somefilefolder/")... not accessible here!
+								$node = new Sabre_DAV_S3_File($this->getObject() . $subkey, $parent);
+							else
+								$node = null;
+
+							if (!is_null($node))
+							{
+								$node->setLastModified($lastmodified);
+								$node->setSize($size);
+								$node->setETag($etag);
+								$node->setOwner($owner);
+								$this->addChild($node);
+								$nodes[$subkey] = $node;
+							}
 						}
 					}
 				}
 			}
+
+			if ($response->body->CommonPrefixes)
+			{
+				foreach ($response->body->CommonPrefixes as $folder)
+				{
+					$node = new Sabre_DAV_S3_Directory((string)$folder->Prefix, $this);
+					$this->addChild($node);
+				}
+			}
 		}
 
-		$this->children = $nodes;
 		$this->children_requested = true;
+	}
+
+	/**
+	 * Resets the children collection
+	 * 
+	 * @return void
+	 */
+	public function clearChildren()
+	{
+		$this->children = array();
+		$this->children_requested = false;
 	}
 
 	/**

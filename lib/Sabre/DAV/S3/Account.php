@@ -158,13 +158,12 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 
 	/**
 	 * Updates the Buckets collection from S3
-	 * 
+	 *
+	 * @param bool $fulltree If true, all subdirectories within buckets will also be parsed, buckets only otherwise 
 	 * @return void
 	 */
-	protected function requestChildren()
+	public function requestChildren($fulltree = false)
 	{
-		$buckets = array();
-
 		$response = $this->getS3()->list_buckets();
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 GET Bucket list failed', $response);
@@ -192,13 +191,27 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 
 					$node = new Sabre_DAV_S3_Bucket((string)$bucket->Name, $this);
 					$node->setLastModified($lastmodified);
-					$buckets[$node->getName()] = $node;
+					$this->addChild($node);
 				}
 			}
 		}
 
-		$this->children = $buckets;
+		if ($fulltree)
+			foreach ($this->children as $bucket)
+				$bucket->requestChildren(true);
+
 		$this->children_requested = true;
+	}
+
+	/**
+	 * Resets the children collection
+	 * 
+	 * @return void
+	 */
+	public function clearChildren()
+	{
+		$this->children = array();
+		$this->children_requested = false;
 	}
 
 	/**
