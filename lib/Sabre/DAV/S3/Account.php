@@ -37,8 +37,6 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 	 * A S3 instance or Amazon credentials ($key, $secret_key) have to be given
 	 *
 	 * @param Sabre_DAV_S3_Bucket[]|string[] $buckets Associative array of Class Bucket with Bucket names as the key or an array of Bucket names within the Account. Set to null to query all Buckets within the S3 Account
-	 * @param string $storageclass [AmazonS3::STORAGE_STANDARD, AmazonS3::STORAGE_REDUCED] The default Storage Redundancy settings for new Objects
-	 * @param string $acl [AmazonS3::ACL_PRIVATE, AmazonS3::ACL_PUBLIC, AmazonS3::ACL_OPEN, AmazonS3::ACL_AUTH_READ, AmazonS3::ACL_OWNER_READ, AmazonS3::ACL_OWNER_FULL_CONTROL] The default ACL for new Objects 
 	 * @param AmazonS3 $s3
 	 * @param string $key
 	 * @param string $secret_key
@@ -46,34 +44,10 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($buckets = null, $storageclass = AmazonS3::STORAGE_STANDARD, $acl = AmazonS3::ACL_PRIVATE, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
+	public function __construct($buckets = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = null)
 	{
-		$this->name = 'S3';
+		parent::__construct('S3', null, $s3, $key, $secret_key, $region, $use_ssl);
 
-		//default values
-		$this->setStorageClass(AmazonS3::STORAGE_STANDARD);
-		$this->setACL(AmazonS3::ACL_PRIVATE);
-		$this->region = AmazonS3::REGION_US_E1;
-		if (!isset($use_ssl))
-			$use_ssl = true;
-
-		if (isset($storageclass))
-			$this->setStorageClass($storageclass);
-		if (isset($acl))
-			$this->setACL($acl);
-		if (isset($region))
-			$this->region = $region;
-		if (isset($s3))
-			$this->s3 = $s3;
-
-		if (isset($key) && isset($secret_key))
-		{
-			$this->s3 = new AmazonS3($key, $secret_key);
-			$this->s3->set_region($this->region);
-			if (!$use_ssl)
-				$this->s3->disable_ssl();
-		}
-		
 		if (isset($buckets))
 		{
 			foreach ($buckets as $bucket)
