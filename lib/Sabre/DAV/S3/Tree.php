@@ -218,6 +218,8 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 		
 		if ($source instanceof Sabre_DAV_S3_File)
 		{
+			if ($destinationParent instanceof Sabre_DAV_S3_Account)
+				throw new Sabre_DAV_Exception_MethodNotAllowed('Objects cannot be stored in root if root is a collection of Buckets');
 			//request storage and acl before content-type to provoke a requestMetaData if nessecary. Content-Type is set to an empty string, not null, in File constructor
 			$destination = new Sabre_DAV_S3_File($destinationParent->getObject() . $destinationName, $destinationParent);
 			$destination->setLastModified(time());
@@ -259,6 +261,9 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 		}
 		elseif ($source instanceof Sabre_DAV_S3_ICollection)	//recurse into subdirectories
 		{
+			if ($destinationParent instanceof Sabre_DAV_S3_Account && $destinationParent->isReadonly())
+				throw new Sabre_DAV_Exception_Forbidden('Cannot create a new bucket because the Account is read only');
+
 			$destinationParent->createDirectory($destinationName);
 			$destination = $destinationParent->getChild($destinationName);
 			foreach ($source->getChildren() as $child)
