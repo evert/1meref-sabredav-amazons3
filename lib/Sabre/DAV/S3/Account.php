@@ -36,7 +36,7 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 	 * Sets up the account
 	 * A S3 instance or Amazon credentials ($key, $secret_key) have to be given
 	 *
-	 * @param Sabre_DAV_S3_Bucket[] $buckets Associative array with Bucket names as the key. Set to null to query all Buckets within the S3 account
+	 * @param Sabre_DAV_S3_Bucket[]|string[] $buckets Associative array of Class Bucket with Bucket names as the key or an array of Bucket names within the Account. Set to null to query all Buckets within the S3 Account
 	 * @param string $storageclass [AmazonS3::STORAGE_STANDARD, AmazonS3::STORAGE_REDUCED] The default Storage Redundancy settings for new Objects
 	 * @param string $acl [AmazonS3::ACL_PRIVATE, AmazonS3::ACL_PUBLIC, AmazonS3::ACL_OPEN, AmazonS3::ACL_AUTH_READ, AmazonS3::ACL_OWNER_READ, AmazonS3::ACL_OWNER_FULL_CONTROL] The default ACL for new Objects 
 	 * @param AmazonS3 $s3
@@ -76,7 +76,12 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 		
 		if (isset($buckets))
 		{
-			$this->children = $buckets;
+			foreach ($buckets as $bucket)
+			{
+				if (is_string($bucket))
+					$bucket = new Sabre_DAV_S3_Bucket($bucket, $this);
+				$this->addChild($bucket);
+			}
 			$this->children_requested = true;
 			$this->readonly = true;
 		}
