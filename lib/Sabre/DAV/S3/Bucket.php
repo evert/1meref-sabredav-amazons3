@@ -10,6 +10,12 @@
  */
 class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 {
+	/**
+	 * The "." Object that holds the bucket's default metadata (Storage Class) 
+	 * 
+	 * @var Sabre_DAV_S3_File
+	 */
+	protected $metafile = null;
 
 	/**
 	 * Sets up the node as a bucket, wich is a special case of Directory
@@ -17,8 +23,6 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 *
 	 * @param string $bucket
 	 * @param Sabre_DAV_S3_ICollection $parent
-	 * @param string $storageclass [AmazonS3::STORAGE_STANDARD, AmazonS3::STORAGE_REDUCED] The default Storage Redundancy settings for new Objects
-	 * @param string $acl [AmazonS3::ACL_PRIVATE, AmazonS3::ACL_PUBLIC, AmazonS3::ACL_OPEN, AmazonS3::ACL_AUTH_READ, AmazonS3::ACL_OWNER_READ, AmazonS3::ACL_OWNER_FULL_CONTROL] The default ACL for new Objects 
 	 * @param AmazonS3 $s3
 	 * @param string $key
 	 * @param string $secret_key
@@ -26,25 +30,9 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($bucket, $parent = null, $storageclass = null, $acl = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = null)
+	public function __construct($bucket, $parent = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = null)
 	{
 		parent::__construct(null, $parent, $bucket, $s3, $key, $secret_key, $region, $use_ssl);
-
-		//default values
-		$this->setStorageClass(AmazonS3::STORAGE_STANDARD);
-		$this->setACL(AmazonS3::ACL_PRIVATE);
-		
-		if (isset($parent))
-		{
-			$this->setStorageClass($parent->getStorageClass());
-			$this->setACL($parent->getACL());
-		}
-
-		if (isset($storageclass))
-			$this->setStorageClass($storageclass);
-
-		if (isset($acl))
-			$this->setACL($acl);
 	}
 
 	/**
@@ -90,6 +78,48 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 		}
 
 		$this->metadata_requested = true;
+
+		if (!isset($this->metafile))
+		{
+			try
+			{
+				$this->metafile = $this->getChild('.');
+			}
+			catch (Exception $e) {}
+
+			if (!isset($this->metafile))
+			{
+				if (isset($this->parent))
+					$this->setStorageClass($this->parent->getStorageClass());
+				if (!isset($this->storageclass))
+					$this->setStorageClass(AmazonS3::STORAGE_STANDARD);
+
+				$this->createFile('.');
+				$this->metafile = $this->getChild('.');
+			}
+			$this->removeChild('.');
+		}
+
+		if (isset($this->metafile))
+			$this->setStorageClass($this->metafile->getStorageClass());
+	}
+
+	/**
+	 * Updates the children collection from S3
+	 *
+	 * @param bool $fulltree If true, all subdirectories will also be parsed, only the current path otherwise
+	 * @return void
+	 */
+	public function requestChildren($fulltree = false)
+	{
+		parent::requestChildren($fulltree);
+
+		try
+		{
+			$this->metafile = $this->getChild('.');
+			$this->removeChild('.');
+		}
+		catch (Exception $e) {}
 	}
 
 	/**
