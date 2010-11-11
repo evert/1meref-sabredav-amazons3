@@ -78,6 +78,27 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 
 		if (isset($bucket))
 			$this->bucket = $bucket;
+
+		$this->id = $this->createID();
+	}
+
+	/**
+	 * Save the node
+	 */
+	public function __sleep()
+	{
+		return array_merge
+		(
+			parent::__sleep(),
+			array
+			(
+				'bucket',
+				'object',
+				'size',
+				'etag',
+				'contenttype'
+			)
+		);
 	}
 
 	/**
@@ -119,6 +140,16 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 			$this->setACL($data['ACL']);
 
 		$this->metadata_requested = true;
+	}
+
+	/**
+	 * Creates a unique ID for this node
+	 * 
+	 * @return string
+	 */
+	protected function createID()
+	{
+		return 'AmazonS3 ' . urlencode($this->bucket) . ' ' . urlencode($this->object) . ' ' . $this->getS3()->key;
 	}
 
 	/**

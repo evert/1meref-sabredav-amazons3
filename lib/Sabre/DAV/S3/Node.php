@@ -12,6 +12,13 @@
 abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 {
 	/**
+	 * The node's internal ID (for caching purposes)
+	 * 
+	 * @var string
+	 */
+	protected $id = null;
+
+	/**
 	 * The node's name
 	 * 
 	 * @var string
@@ -21,9 +28,16 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	/**
 	 * This node's parent node
 	 *
-	 * @var Sabre_DAV_S3_Directory
+	 * @var Sabre_DAV_S3_ICollection
 	 */
 	protected $parent = null;
+
+	/**
+	 * The node's parent node's ID
+	 * 
+	 * @var string
+	 */
+	protected $parent_id = null;
 
 	/**
 	 * The Amazon S3 SDK instance for API calls
@@ -119,6 +133,31 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 			if (!$use_ssl)
 				$this->s3->disable_ssl();
 		}
+		
+		$this->id = $this->createID();
+	}
+
+	/**
+	 * Save the node
+	 */
+	public function __sleep()
+	{
+		$this->parent_id = null;
+		if (isset($this->parent))
+			$this->parent_id = $this->parent->getID();
+
+		return array
+		(
+			'id',
+			'name',
+			'parent_id',
+			'region',
+			'metadata_requested',
+			'lastmodified',
+			'storageclass',
+			'owner',
+			'acl'
+		);
 	}
 
 	/**
@@ -214,6 +253,27 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	}
 
 	/**
+	 * Creates a unique ID for this node
+	 * Subclasses need to overwrite this function!
+	 * 
+	 * @return string
+	 */
+	protected function createID()
+	{
+		return 'AmazonS3 <Bucket> <Object> <Principal>';
+	}
+
+	/**
+	 * Returns the node's ID
+	 *
+	 * @return string
+	 */
+	public function getID()
+	{
+		return $this->id;
+	}
+
+	/**
 	 * Returns the node's name
 	 *
 	 * @return string
@@ -231,13 +291,13 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	 */
 	public function setName($name)
 	{
-		$oldName = $this->name;
-		$this->name = $name;
 		if ($this->parent)
-		{
-			$this->parent->removeChild($oldName);
+			$this->parent->removeChild($this->name);
+
+		$this->name = $name;
+
+		if ($this->parent)
 			$this->parent->addChild($this);
-		}
 	}
 
 	/**
