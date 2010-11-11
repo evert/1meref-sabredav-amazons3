@@ -20,6 +20,13 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 	protected $children = array();
 
 	/**
+	 * The node's child nodes' ID
+	 *
+	 * @var string[]
+	 */
+	protected $children_id = array();
+
+	/**
 	 * Did we populate the list of children from S3?
 	 * 
 	 * @var bool
@@ -51,6 +58,26 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 		$this->setSize(0);
 		$this->setETag('');
 		$this->setContentType('');
+	}
+
+	/**
+	 * Save the node
+	 */
+	public function __sleep()
+	{
+		$this->children_id = array();
+		foreach ($this->children as $child)
+			array_push($this->children_id, $child->getID());
+
+		return array_merge
+		(
+			parent::__sleep(),
+			array
+			(
+				'children_id',
+				'children_requested'
+			)
+		);
 	}
 
 	/**

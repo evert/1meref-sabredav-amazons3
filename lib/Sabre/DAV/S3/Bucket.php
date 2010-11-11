@@ -18,6 +18,13 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	protected $metafile = null;
 
 	/**
+	 * The metafile's ID
+	 *
+	 * @var string
+	 */
+	protected $metafile_id = null;
+
+	/**
 	 * Sets up the node as a bucket, wich is a special case of Directory
 	 * Either an existing S3 instance $s3, or $key and $secret_key have to be given
 	 *
@@ -33,6 +40,25 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	public function __construct($bucket, $parent = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = null)
 	{
 		parent::__construct(null, $parent, $bucket, $s3, $key, $secret_key, $region, $use_ssl);
+	}
+
+	/**
+	 * Save the node
+	 */
+	public function __sleep()
+	{
+		$this->metafile_id = null;
+		if (isset($this->metafile))
+			$this->metafile_id = $this->metafile->getID();
+
+		return array_merge
+		(
+			parent::__sleep(),
+			array
+			(
+				'metafile_id'
+			)
+		);
 	}
 
 	/**

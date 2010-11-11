@@ -12,11 +12,18 @@
 class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICollection
 {
 	/**
-	 * The account's buckets
+	 * The Account's Buckets collection
 	 *
 	 * @var Sabre_DAV_S3_Bucket[]
 	 */
 	protected $children = array();
+
+	/**
+	 * The Account's Buckets' ID
+	 *
+	 * @var string[]
+	 */
+	protected $children_id = array();
 
 	/**
 	 * Did we populate the list of Buckets from S3?
@@ -46,7 +53,7 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 	 */
 	public function __construct($buckets = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = null)
 	{
-		parent::__construct('S3', null, $s3, $key, $secret_key, $region, $use_ssl);
+		parent::__construct('AmazonS3', null, $s3, $key, $secret_key, $region, $use_ssl);
 
 		if (isset($buckets))
 		{
@@ -59,6 +66,37 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 			$this->children_requested = true;
 			$this->readonly = true;
 		}
+	}
+
+	/**
+	 * Save the node
+	 */
+	public function __sleep()
+	{
+		$this->children_id = array();
+		foreach ($this->children as $child)
+			array_push($this->children_id, $child->getID());
+
+		return array_merge
+		(
+			parent::__sleep(),
+			array
+			(
+				'children_id',
+				'children_requested',
+				'readonly'
+			)
+		);
+	}
+
+	/**
+	 * Creates a unique ID for this node
+	 * 
+	 * @return string
+	 */
+	protected function createID()
+	{
+		return 'AmazonS3   ' . $this->getS3()->key;
 	}
 
 	/**

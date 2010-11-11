@@ -12,6 +12,13 @@ interface Sabre_DAV_S3_INode extends Sabre_DAV_INode
 {
 
 	/**
+	 * Returns the node's ID
+	 *
+	 * @return string
+	 */
+	public function getID();
+
+	/**
 	 * Returns the node's parent
 	 *
 	 * @return Sabre_DAV_S3_ICollection
