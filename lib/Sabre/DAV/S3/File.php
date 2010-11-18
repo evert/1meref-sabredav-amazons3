@@ -18,18 +18,33 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 	 * @param string $object
 	 * @param Sabre_DAV_S3_ICollection $parent
 	 * @param string $bucket
-	 * @param AmazonS3 $s3
-	 * @param string $key
-	 * @param string $secret_key
-	 * @param string $region [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1]
-	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($object, Sabre_DAV_S3_ICollection $parent = null, $bucket = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = null)
+	public function __construct($object, Sabre_DAV_S3_ICollection $parent = null, $bucket = null)
 	{
-		parent::__construct($object, $parent, $bucket, $s3, $key, $secret_key, $region, $use_ssl);
+		parent::__construct($object, $parent, $bucket);
 
-		$this->setContentType('');	//so that we do not have to query the Content-Type for every PROPFIND request
+		$this->contenttype = ''; //so that we do not have to query the Content-Type for every PROPFIND request
+	}
+
+	/**
+	 * Find the Object by Key or create a new Instance
+	 * If $parent is not given a bucket name must be supplied
+	 *
+	 * @param array $key
+	 * @param string $object
+	 * @param Sabre_DAV_S3_ICollection $parent
+	 * @param string $bucket
+	 * @return Sabre_DAV_S3_INode
+	 */
+	public static function getInstanceByKey($key, $object, Sabre_DAV_S3_ICollection $parent = null, $bucket = null)
+	{
+		$object = Sabre_DAV_S3_Persistable::getInstanceByKey(__CLASS__, $key, $object, $parent, $bucket);
+
+		if (isset($parent))
+			$object->setParent($parent);
+
+		return $object;
 	}
 
 	/**
@@ -44,11 +59,7 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 	public function get($streamout = false, $start = null, $end = null)
 	{
 		$opts = array();
-		$opts['curlopts'] = array
-		(
-			CURLOPT_HEADER => false,
-			CURLOPT_RETURNTRANSFER => false
-		);
+		$opts['curlopts'] = array(CURLOPT_HEADER => false, CURLOPT_RETURNTRANSFER => false);
 		if (isset($start) && isset($end) && $start >= 0 && $start <= $end)
 			$opts['range'] = $start . '-' . $end;
 
@@ -57,12 +68,7 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 			$filehandle = fopen('php://temp', 'w+');
 			$opts['curlopts'][CURLOPT_FILE] = $filehandle;
 
-			$response = $this->getS3()->get_object
-			(
-				$this->bucket,
-				$this->object,
-				$opts
-			);
+			$response = $this->getS3()->get_object($this->bucket, $this->object, $opts);
 			if (!$response->isOK(array(200, 206)))
 				throw new Sabre_DAV_S3_Exception('S3 GET Object failed', $response);
 
@@ -71,9 +77,10 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 		}
 		else
 		{
-			ob_end_clean();
 			if (headers_sent())
 				throw new Sabre_DAV_Exception('Content integrity cannot be ensured! Unexpected script output');
+
+			ob_end_clean();
 
 			$filehandle = fopen('php://output', 'w');
 			$callback = new Sabre_DAV_S3_CurlStream($filehandle);
@@ -81,7 +88,9 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 			$opts['curlopts'][CURLOPT_WRITEFUNCTION] = array($callback, 'write');
 
 			$response = $this->getS3()->get_object($this->bucket, $this->object, $opts);
-			if (!$response->isOK(array(200, 206)))
+			if ($response->isOK(404))
+				throw new Sabre_DAV_Exception_FileNotFound('S3 Object not found');
+			elseif (!$response->isOK(array(200, 206)))
 				throw new Sabre_DAV_S3_Exception('S3 GET Object failed', $response);
 
 			return null;
@@ -131,12 +140,7 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 					throw new Sabre_DAV_Exception_BadRequest('Content-Length for PUT cannot be determined');
 			}
 			$callback = new Sabre_DAV_S3_CurlStream($uploadData, $size);
-			$opts['curlopts'] = array
-			(
-				CURLOPT_UPLOAD => true,
-				CURLOPT_INFILESIZE => $size,
-				CURLOPT_READFUNCTION => array($callback, 'read')
-			);
+			$opts['curlopts'] = array(CURLOPT_UPLOAD => true, CURLOPT_INFILESIZE => $size, CURLOPT_READFUNCTION => array($callback, 'read'));
 		}
 		else //should we even allow this? The directory createFile allows $data to be null so we have to handle this here
 		{
@@ -156,20 +160,16 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 		if (isset($acl))
 			$opts['acl'] = $acl;
 
-		$response = $this->getS3()->create_object
-		(
-			$this->bucket,
-			$this->object,
-			$opts
-		);
+		$response = $this->getS3()->create_object($this->bucket, $this->object, $opts);
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 PUT Object failed', $response);
 
-		$this->setLastModified(time());
+		$this->setLastModified($response->header['date'] ? strtotime($response->header['date']) : null);
 		$this->setSize($size);
 		$this->setContentType($type);
-		$this->setETag(null);
-		$this->metadata_requested = false;
+		$this->setETag($response->header['etag'] ? $response->header['etag'] : null);
+		//$this->metadata_requested = false;
+	//$this->markDirty();
 	}
 
 	/**
@@ -195,14 +195,11 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 	 */
 	public function delete()
 	{
-		$response = $this->getS3()->delete_object
-		(
-			$this->bucket,
-			$this->object
-		);
+		$response = $this->getS3()->delete_object($this->bucket, $this->object);
 		if (!$response->isOK())
 			throw new Sabre_DAV_Exception('S3 DELETE Object failed', $response);
 
-		parent::delete();
+		$this->getParent()->removeChild($this->name);
+		$this->remove();
 	}
 }

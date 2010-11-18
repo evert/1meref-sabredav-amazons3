@@ -27,14 +27,21 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 
 	/**
 	 * Did we populate the list of Buckets from S3?
-	 * 
+	 *
 	 * @var bool
 	 */
 	protected $children_requested = false;
 
 	/**
+	 * Did we get a list of buckets in the constructor?
+	 *
+	 * @var bool
+	 */
+	protected $children_supplied = false;
+
+	/**
 	 * Can we create or delete buckets? Defaults to true if a list of Buckets is given rather than requested from Amazon
-	 * 
+	 *
 	 * @var bool
 	 */
 	protected $readonly = false;
@@ -44,59 +51,79 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 	 * A S3 instance or Amazon credentials ($key, $secret_key) have to be given
 	 *
 	 * @param Sabre_DAV_S3_Bucket[]|string[] $buckets Associative array of Class Bucket with Bucket names as the key or an array of Bucket names within the Account. Set to null to query all Buckets within the S3 Account
-	 * @param AmazonS3 $s3
-	 * @param string $key
-	 * @param string $secret_key
-	 * @param string $region [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1]
-	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($buckets = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = null)
+	public function __construct($buckets = null)
 	{
-		parent::__construct('AmazonS3', null, $s3, $key, $secret_key, $region, $use_ssl);
+		parent::__construct('AmazonS3', null);
 
 		if (isset($buckets))
 		{
 			foreach ($buckets as $bucket)
 			{
 				if (is_string($bucket))
-					$bucket = new Sabre_DAV_S3_Bucket($bucket, $this);
+					$bucket = Sabre_DAV_S3_Bucket::getInstanceByKey(array('bucket' => $bucket), $bucket, $this);
+				else
+				{
+					$bucket->modernize();
+					$bucket->persist(true);
+				}
+
 				$this->addChild($bucket);
 			}
+
+			$this->children_supplied = true;
 			$this->children_requested = true;
 			$this->readonly = true;
 		}
 	}
 
 	/**
-	 * Save the node
+	 * Returns the node's Key
+	 *
+	 * @return string
 	 */
-	public function __sleep()
+	public function getKey()
 	{
-		$this->children_id = array();
-		foreach ($this->children as $child)
-			array_push($this->children_id, $child->getID());
-
-		return array_merge
-		(
-			parent::__sleep(),
-			array
-			(
-				'children_id',
-				'children_requested',
-				'readonly'
-			)
-		);
+		return array('s3key' => $this->getS3()->key);
 	}
 
 	/**
-	 * Creates a unique ID for this node
-	 * 
-	 * @return string
+	 * Returns the property names to persist in a two dimensional array with the first array key being __CLASS__ and the second array a list of property names for that class.
+	 * Every subclass with new properties to persist has to overwrite this function and return the merged array with it's parent class
+	 *
+	 * @return array
 	 */
-	protected function createID()
+	public function getPersistentProperties()
 	{
-		return 'AmazonS3   ' . $this->getS3()->key;
+		return array_merge(parent::getPersistentProperties(), array(__CLASS__ => array('children_id', 'children_requested', 'readonly')));
+	}
+
+	/**
+	 * Gets called just after the Object was refreshed
+	 *
+	 * @param Sabre_DAV_S3_IEntityManager $entitymanager
+	 * @return bool
+	 */
+	public function _afterRefresh(Sabre_DAV_S3_IEntityManager $entitymanager)
+	{
+		parent::_afterRefresh($entitymanager);
+
+		if ($this->children_supplied)
+		{
+			$oldchildren = $this->children_id;
+			$this->children_id = array();
+
+			foreach ($this->children as $child)
+				array_push($this->children_id, $child->getID());
+
+			if ($this->children_id !== $oldchildren)
+				$this->markDirty();
+		}
+		else
+			$this->children = array();
+
+		return true;
 	}
 
 	/**
@@ -157,16 +184,13 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 		if ($this->readonly)
 			throw new Sabre_DAV_Exception_MethodNotAllowed('S3 Account is read only');
 
-		$response = $this->getS3()->create_bucket
-		(
-			$name,
-			$this->getRegion(),
-			$this->getACL()
-		);
+		$response = $this->getS3()->create_bucket($name, $this->getRegion(), $this->getACL());
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 PUT Bucket failed', $response);
 
 		$node = new Sabre_DAV_S3_Bucket($name, $this);
+		$node->persist();
+
 		$node->setStorageClass($this->getStorageClass());
 		$node->setACL($this->getACL());
 
@@ -176,7 +200,7 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 	/**
 	 * Updates the Buckets collection from S3
 	 *
-	 * @param bool $fulltree If true, all subdirectories within buckets will also be parsed, buckets only otherwise 
+	 * @param bool $fulltree If true, all subdirectories within buckets will also be parsed, buckets only otherwise
 	 * @return void
 	 */
 	public function requestChildren($fulltree = false)
@@ -194,7 +218,7 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 				$owner['DisplayName'] = (string)$response->body->Owner->DisplayName;
 				$this->setOwner($owner);
 			}
-			
+
 			if ($response->body->Buckets && $response->body->Buckets->Bucket)
 			{
 				foreach ($response->body->Buckets->Bucket as $bucket)
@@ -206,7 +230,7 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 						$lastmodified = $dt->getTimestamp();
 					}
 
-					$node = new Sabre_DAV_S3_Bucket((string)$bucket->Name, $this);
+					$node = Sabre_DAV_S3_Bucket::getInstanceByKey(array('bucket' => (string)$bucket->Name), (string)$bucket->Name, $this);
 					$node->setLastModified($lastmodified);
 					$this->addChild($node);
 				}
@@ -221,24 +245,35 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 	}
 
 	/**
-	 * Resets the children collection
-	 * 
-	 * @return void
-	 */
-	public function clearChildren()
-	{
-		$this->children = array();
-		$this->children_requested = false;
-	}
-
-	/**
 	 * Returns an array with all the child nodes
 	 *
 	 * @throws Sabre_DAV_S3_Exception
-	 * @return Sabre_DAV_Bucket[]
+	 * @return Sabre_DAV_S3_Bucket[]
 	 */
 	public function getChildren()
 	{
+		if (empty($this->children) && $this->getEntityManager() && !empty($this->children_id))
+		{
+			$dirtystate = $this->isDirty();
+
+			foreach ($this->children_id as $child_id)
+			{
+				$node = $this->getEntityManager()->find($child_id);
+				if ($node)
+					$this->addChild($node);
+				else
+				{
+					$this->children = array();
+					$this->children_id = array();
+					$this->children_requested = false;
+					$dirtystate = true;
+					break;
+				}
+			}
+
+			$this->markDirty($dirtystate);
+		}
+
 		if (!$this->children_requested)
 			$this->requestChildren();
 
@@ -273,24 +308,39 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 
 	/**
 	 * Add a child to the children collection
-	 * 
+	 *
 	 * @param Sabre_DAV_S3_INode $node
 	 * @return void
 	 */
 	public function addChild(Sabre_DAV_S3_INode $node)
 	{
 		$this->children[$node->getName()] = $node;
+		$id = $node->getID();
+		if (!in_array($id, $this->children_id))
+		{
+			array_push($this->children_id, $id);
+			$this->markDirty();
+		}
 	}
 
 	/**
 	 * Removes the child specified by it's name from the children collection
-	 * 
+	 *
 	 * @param string $name
 	 * @return void
 	 */
 	public function removeChild($name)
 	{
-		unset($this->children[$name]);
+		$node = $this->getChild($name);
+		if ($node)
+		{
+			$id = $node->getID();
+			$offset = array_search($id, $this->children_id);
+			if ($offset !== false)
+				array_splice($this->children_id, $offset, 1);
+			unset($this->children[$name]);
+			$this->markDirty();
+		}
 	}
 
 	/**
@@ -304,4 +354,3 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 		throw new Sabre_DAV_Exception_MethodNotAllowed('S3 Accounts cannot be deleted');
 	}
 }
-?>

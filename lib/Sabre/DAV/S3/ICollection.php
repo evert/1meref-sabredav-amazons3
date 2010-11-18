@@ -12,7 +12,7 @@ interface Sabre_DAV_S3_ICollection extends Sabre_DAV_S3_INode, Sabre_DAV_ICollec
 {
 	/**
 	 * Add a child to the children collection
-	 * 
+	 *
 	 * @param Sabre_DAV_S3_INode $node
 	 * @return void
 	 */
@@ -20,7 +20,7 @@ interface Sabre_DAV_S3_ICollection extends Sabre_DAV_S3_INode, Sabre_DAV_ICollec
 
 	/**
 	 * Removes the child specified by it's name from the children collection
-	 * 
+	 *
 	 * @param string $name
 	 * @return void
 	 */
@@ -33,11 +33,4 @@ interface Sabre_DAV_S3_ICollection extends Sabre_DAV_S3_INode, Sabre_DAV_ICollec
 	 * @return void
 	 */
 	public function requestChildren($fulltree = false);
-	
-	/**
-	 * Resets the children collection
-	 * 
-	 * @return void
-	 */
-	public function clearChildren();
 }

@@ -41,6 +41,9 @@ class Sabre_DAV_S3_Exception extends Sabre_DAV_Exception
 	 */
 	public function getHTTPCode()
 	{
-		return 500;
+		if ($this->s3response)
+			return $s3response->status;
+		else
+			return 500;
 	}
 }

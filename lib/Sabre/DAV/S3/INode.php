@@ -8,15 +8,8 @@
  * @author Paul Voegler
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
-interface Sabre_DAV_S3_INode extends Sabre_DAV_INode
+interface Sabre_DAV_S3_INode extends Sabre_DAV_INode, Sabre_DAV_S3_IPersistable
 {
-
-	/**
-	 * Returns the node's ID
-	 *
-	 * @return string
-	 */
-	public function getID();
 
 	/**
 	 * Returns the node's parent
@@ -27,7 +20,7 @@ interface Sabre_DAV_S3_INode extends Sabre_DAV_INode
 
 	/**
 	 * Sets this node's parent
-	 * 
+	 *
 	 * @param Sabre_DAV_S3_ICollection $node
 	 * @return void
 	 */
@@ -41,19 +34,20 @@ interface Sabre_DAV_S3_INode extends Sabre_DAV_INode
 	public function getS3();
 
 	/**
-	 * Returns the node's S3 endpoint Region or it's default setting for child nodes
-	 * 
-	 * @return string
-	 */
-	public function getRegion();
-
-	/**
-	 * Sets the node's S3 endpoint Region or it's default setting for child nodes
-	 * 
-	 * @param string $region Valid values are [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1] 
+	 * Sets the node's S3 instance
+	 *
+	 * @param AmazonS3 $s3
 	 * @return void
 	 */
-	public function setRegion($region);
+	public function setS3(AmazonS3 $s3);
+
+	/**
+	 * Sets the default S3 instance
+	 *
+	 * @param AmazonS3 $s3
+	 * @return void
+	 */
+	public static function setDefaultS3(AmazonS3 $s3);
 
 	/**
 	 * Sets the node's last modification time
