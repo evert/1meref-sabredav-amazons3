@@ -49,56 +49,28 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 
 	/**
 	 * Sets up the node, expects a full Object name or null in case of the Bucket itself
-	 * If $parent is not given, a bucket name and a S3 instance or Amazon credentials have to be given
+	 * If $parent is not given a bucket name must be supplied
 	 *
 	 * @param string $object
 	 * @param Sabre_DAV_S3_ICollection $parent
 	 * @param string $bucket
-	 * @param AmazonS3 $s3
-	 * @param string $key
-	 * @param string $secret_key
-	 * @param string $region [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1]
-	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($object, Sabre_DAV_S3_ICollection $parent = null, $bucket = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = null)
+	public function __construct($object, Sabre_DAV_S3_ICollection $parent = null, $bucket = null)
 	{
-		$this->object = $object !== '' ? $object : null;;
-		
+		$this->object = $object !== '' ? $object : null;
+		;
+
 		$name = null;
 		if (isset($this->object))
 			list(, $name) = Sabre_DAV_URLUtil::splitPath(rtrim($this->object, '/'));
 		else
 			$name = $bucket;
 
-		parent::__construct($name, $parent, $s3, $key, $secret_key, $region, $use_ssl);
-
-		if (isset($parent) && $parent instanceof Sabre_DAV_S3_Object)
-			$this->bucket = $parent->getBucket();
+		parent::__construct($name, $parent);
 
 		if (isset($bucket))
 			$this->bucket = $bucket;
-
-		$this->id = $this->createID();
-	}
-
-	/**
-	 * Save the node
-	 */
-	public function __sleep()
-	{
-		return array_merge
-		(
-			parent::__sleep(),
-			array
-			(
-				'bucket',
-				'object',
-				'size',
-				'etag',
-				'contenttype'
-			)
-		);
 	}
 
 	/**
@@ -108,19 +80,15 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 	 * @param bool $force
 	 * @return void
 	 */
-	protected function requestMetaData($force = false)
+	public function requestMetaData($force = false)
 	{
 		if (!$force && $this->metadata_requested)
 			return;
 
-		$data = $this->getS3()->get_object_metadata
-		(
-			$this->bucket,
-			$this->object
-		);
+		$data = $this->getS3()->get_object_metadata($this->bucket, $this->object);
 		if (!$data)
 			throw new Sabre_DAV_S3_Exception('S3 Object metadata retrieve failed');
-		
+
 		if (isset($data['LastModified']))
 		{
 			$dt = new DateTime($data['LastModified']);
@@ -143,13 +111,24 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 	}
 
 	/**
-	 * Creates a unique ID for this node
-	 * 
+	 * Returns the node's Key
+	 *
 	 * @return string
 	 */
-	protected function createID()
+	public function getKey()
 	{
-		return 'AmazonS3 ' . urlencode($this->bucket) . ' ' . urlencode($this->object) . ' ' . $this->getS3()->key;
+		return array('bucket' => $this->bucket, 'object' => $this->object);
+	}
+
+	/**
+	 * Returns the property names to persist in a two dimensional array with the first array key being __CLASS__ and the second array a list of property names for that class.
+	 * Every subclass with new properties to persist has to overwrite this function and return the merged array with it's parent class
+	 *
+	 * @return array
+	 */
+	public function getPersistentProperties()
+	{
+		return array_merge(parent::getPersistentProperties(), array(__CLASS__ => array('bucket', 'object', 'size', 'etag', 'contenttype')));
 	}
 
 	/**
@@ -175,41 +154,44 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 		$acl = $this->getACL();
 		$contenttype = $this->getContentType();
 
-		$response = $this->getS3()->copy_object
-		(
-			array
-			(
-				'bucket' => $this->bucket,
-				'filename' => $this->object
-			),
-			array
-			(
-				'bucket' => $this->bucket,
-				'filename' => $newObject
-			),
-			array
-			(
-				'headers' => array
-				(
-					'Content-Type' => $contenttype
-				),
-				'storage' => $storage,
-				'acl' => $acl
-			)
-		);
+		$response = $this->getS3()->copy_object(array('bucket' => $this->bucket, 'filename' => $this->object), array('bucket' => $this->bucket, 'filename' => $newObject), array('headers' => array('Content-Type' => $contenttype), 'storage' => $storage, 'acl' => $acl));
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 PUT Object (Copy) failed', $response);
 
-		$response = $this->getS3()->delete_object
-		(
-			$this->bucket,
-			$this->object
-		);
+		$response = $this->getS3()->delete_object($this->bucket, $this->object);
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 DELETE Object (Copy) failed', $response);
 
+		$this->remove();
+		$this->detach();
+
+		$this->getParent()->removeChild($this->name);
 		$this->object = $newObject;
-		parent::_setName($newName);
+
+		$this->name = $name;
+		$this->id = null;
+
+		$this->markDirty();
+		$this->persist();
+
+		$this->getParent()->addChild($this);
+	}
+
+	/**
+	 * Sets this node's parent
+	 *
+	 * @param Sabre_DAV_S3_ICollection $node
+	 * @return void
+	 */
+	public function setParent(Sabre_DAV_S3_ICollection $node)
+	{
+		parent::setParent($node);
+
+		if (!isset($this->bucket) && isset($node) && $node instanceof Sabre_DAV_S3_Object)
+		{
+			$this->bucket = $node->getBucket();
+			$this->markDirty();
+		}
 	}
 
 	/**
@@ -224,7 +206,7 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 
 	/**
 	 * Returns the node's Object name within the Amazon Bucket
-	 * 
+	 *
 	 * @return string
 	 */
 	public function getObject()
@@ -253,7 +235,11 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 	 */
 	public function setSize($size)
 	{
-		$this->size = $size;
+		if ($this->size !== $size)
+		{
+			$this->size = $size;
+			$this->markDirty();
+		}
 	}
 
 	/**
@@ -279,7 +265,11 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 	 */
 	public function setETag($etag)
 	{
-		$this->etag = $etag;
+		if ($this->etag !== $etag)
+		{
+			$this->etag = $etag;
+			$this->markDirty();
+		}
 	}
 
 	/**
@@ -303,6 +293,10 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 	 */
 	public function setContentType($contenttype)
 	{
-		$this->contenttype = $contenttype;
+		if ($this->contenttype !== $contenttype)
+		{
+			$this->contenttype = $contenttype;
+			$this->markDirty();
+		}
 	}
 }

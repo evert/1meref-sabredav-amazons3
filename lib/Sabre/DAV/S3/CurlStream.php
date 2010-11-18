@@ -12,6 +12,13 @@
 class Sabre_DAV_S3_CurlStream
 {
 	/**
+	 * Is set to false if sth. unexpected happens. No more data is processed then.
+	 *
+	 * @var bool
+	 */
+	protected $active = true;
+
+	/**
 	 * The resource to read from or write to
 	 *
 	 * @var resource
@@ -67,6 +74,9 @@ class Sabre_DAV_S3_CurlStream
 	 */
 	public function read($curlhandle, $filehandle, $maxsize)
 	{
+		if (!$this->active)
+			return false;
+
 		if (isset($this->resource))
 			$filehandle = $this->resource;
 		if (!is_resource($filehandle))
@@ -79,7 +89,7 @@ class Sabre_DAV_S3_CurlStream
 
 		$data = fread($filehandle, $maxchunk);
 		if ($data === false)
-			return null;
+			return false;
 		$size = strlen($data);
 		$this->handled += $size;
 
@@ -94,8 +104,14 @@ class Sabre_DAV_S3_CurlStream
 	 */
 	public function write($curlhandle, $data)
 	{
-		if (!isset($data) || $data === '')
+		$size = strlen($data);
+
+		if (!$this->active) //ignore following data
+			return $size;
+
+		if ($size <= 0)
 			return 0;
+
 		if (isset($this->streamsize) && $this->handled >= $this->streamsize)
 			return false;
 
@@ -103,7 +119,6 @@ class Sabre_DAV_S3_CurlStream
 		if (!is_resource($filehandle))
 			throw new ErrorException('Output resource missing');
 
-		$size = strlen($data);
 		$fwrite = 0;
 		for ($written = 0; $written < $size; $written += $fwrite)
 		{
@@ -126,13 +141,19 @@ class Sabre_DAV_S3_CurlStream
 	public function header($curlhandle, $data)
 	{
 		$size = strlen($data);
-		$matches = null;
 
+		if (!$this->active) //ignore following data
+			return $size;
+
+		$matches = null;
 		if (preg_match('/^HTTP\/\d+\.\d+\s+(\d+)/i', $data, $matches))
 		{
-			if (!in_array((int)$matches[1], array(200, 206, 304, 307))) //307 is handled by AmazonS3->authenticate() to request again. Headers should not have been sent by then!?
-				throw new ErrorException('Unexpected status code (' . $matches[1] . ')');
-//			$data = preg_replace('/^HTTP\/\d+\.\d+/i', $_SERVER['SERVER_PROTOCOL'], $data); //set our HTTP protocol version (Amazon is 1.1 but we could be 1.0)
+			if (!in_array((int)$matches[1], array(200, 206)))
+			{
+				$this->active = false;
+				header_remove();
+			}
+			//			$data = preg_replace('/^HTTP\/\d+\.\d+/i', $_SERVER['SERVER_PROTOCOL'], $data); //set our HTTP protocol version (Amazon is 1.1 but we could be 1.0)
 		}
 		if (preg_match('/^[coneti]{10}\:/i', $data)) //strip out server or load balancer "Connection:" header
 			$data = null;
@@ -140,8 +161,10 @@ class Sabre_DAV_S3_CurlStream
 			$data = null;
 		if (preg_match('/^Transfer\-Encoding\:/i', $data)) //strip out server "Transfer-Encoding:" header
 			$data = null;
-			
-		if (isset($data))
+		if (preg_match('/^Content\-Encoding\:/i', $data)) //strip out server "Content-Encoding:" header
+			$data = null;
+
+		if (isset($data) && $size > 0)
 			header($data, true);
 
 		return $size;

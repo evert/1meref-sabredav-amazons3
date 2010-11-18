@@ -11,14 +11,14 @@
 class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 {
 	/**
-	 * The "." Object that holds the bucket's default metadata (Storage Class) 
-	 * 
+	 * The "." Object that holds the bucket's default metadata (Storage Class)
+	 *
 	 * @var Sabre_DAV_S3_File
 	 */
 	protected $metafile = null;
 
 	/**
-	 * The metafile's ID
+	 * The ID of the "." Object that holds the bucket's default metadata (Storage Class)
 	 *
 	 * @var string
 	 */
@@ -30,35 +30,105 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 *
 	 * @param string $bucket
 	 * @param Sabre_DAV_S3_ICollection $parent
-	 * @param AmazonS3 $s3
-	 * @param string $key
-	 * @param string $secret_key
-	 * @param string $region [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1] The buckets endpoint Region
-	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($bucket, $parent = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = null, $use_ssl = null)
+	public function __construct($bucket, $parent = null)
 	{
-		parent::__construct(null, $parent, $bucket, $s3, $key, $secret_key, $region, $use_ssl);
+		parent::__construct(null, $parent, $bucket);
 	}
 
 	/**
-	 * Save the node
+	 * Find the Object by Key or create a new Instance
+	 * If $parent is not given a bucket name must be supplied
+	 *
+	 * @param array $key
+	 * @param string $bucket
+	 * @param Sabre_DAV_S3_ICollection $parent
+	 * @return Sabre_DAV_S3_INode
 	 */
-	public function __sleep()
+	public static function getInstanceByKey($key, $bucket, Sabre_DAV_S3_ICollection $parent = null)
 	{
-		$this->metafile_id = null;
-		if (isset($this->metafile))
-			$this->metafile_id = $this->metafile->getID();
+		$object = Sabre_DAV_S3_Persistable::getInstanceByKey(__CLASS__, $key, $bucket, $parent);
 
-		return array_merge
-		(
-			parent::__sleep(),
-			array
-			(
-				'metafile_id'
-			)
-		);
+		if (isset($parent))
+			$object->setParent($parent);
+
+		return $object;
+	}
+
+	/**
+	 * Returns the property names to persist in a two dimensional array with the first array key being __CLASS__ and the second array a list of property names for that class.
+	 * Every subclass with new properties to persist has to overwrite this function and return the merged array with it's parent class
+	 *
+	 * @return array
+	 */
+	public function getPersistentProperties()
+	{
+		return array_merge(parent::getPersistentProperties(), array(__CLASS__ => array('metafile_id')));
+	}
+
+	/**
+	 * Gets called just after the Object was refreshed
+	 *
+	 * @param Sabre_DAV_S3_IEntityManager $entitymanager
+	 * @return bool
+	 */
+	public function _afterRefresh(Sabre_DAV_S3_IEntityManager $entitymanager)
+	{
+		parent::_afterRefresh($entitymanager);
+		$this->metafile = null;
+
+		return true;
+	}
+
+	/**
+	 * Returns or creates the metafile
+	 *
+	 * @return Sabre_DAV_S3_File
+	 */
+	public function getMetaFile()
+	{
+		$metafile = null;
+
+		if (isset($this->metafile))
+			$metafile = $this->metafile;
+
+		if (!isset($metafile) && $this->getEntityManager() && isset($this->metafile_id))
+		{
+			$metafile = $this->getEntityManager()->find($this->metafile_id);
+			if ($metafile)
+				$this->addChild($metafile);
+			else
+			{
+				$metafile = null;
+				$this->metafile_id = null;
+				$this->markDirty();
+			}
+		}
+
+		if (!isset($metafile) && !$this->children_requested)
+			$this->getChildren();
+
+		if (isset($this->metafile))
+			$metafile = $this->metafile;
+
+		if (!isset($metafile))
+		{
+			if (!isset($this->storageclass))
+			{
+				if (isset($this->parent))
+					$this->setStorageClass($this->parent->getStorageClass());
+				if (!isset($this->storageclass))
+					$this->setStorageClass(AmazonS3::STORAGE_STANDARD);
+			}
+
+			$this->createFile('.', fopen('php://memory', 'r'), 0, '');
+		}
+
+		if (isset($this->metafile))
+			$metafile = $this->metafile;
+
+		return $metafile;
 	}
 
 	/**
@@ -67,7 +137,7 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 * @param bool $force
 	 * @return void
 	 */
-	protected function requestMetaData($force = false)
+	public function requestMetaData($force = false)
 	{
 		if (!$force && $this->metadata_requested)
 			return;
@@ -103,49 +173,45 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 			}
 		}
 
+		$metafile = $this->getMetaFile();
+
+		if (isset($metafile))
+			$this->setStorageClass($metafile->getStorageClass());
+
 		$this->metadata_requested = true;
-
-		if (!isset($this->metafile))
-		{
-			try
-			{
-				$this->metafile = $this->getChild('.');
-			}
-			catch (Exception $e) {}
-
-			if (!isset($this->metafile))
-			{
-				if (isset($this->parent))
-					$this->setStorageClass($this->parent->getStorageClass());
-				if (!isset($this->storageclass))
-					$this->setStorageClass(AmazonS3::STORAGE_STANDARD);
-
-				$this->createFile('.');
-				$this->metafile = $this->getChild('.');
-			}
-			$this->removeChild('.');
-		}
-
-		if (isset($this->metafile))
-			$this->setStorageClass($this->metafile->getStorageClass());
 	}
 
 	/**
-	 * Updates the children collection from S3
+	 * Returns the node's Key
 	 *
-	 * @param bool $fulltree If true, all subdirectories will also be parsed, only the current path otherwise
+	 * @return string
+	 */
+	public function getKey()
+	{
+		return array('bucket' => $this->bucket);
+	}
+
+	/**
+	 * Add a child to the children collection
+	 *
+	 * @param Sabre_DAV_S3_INode $node
 	 * @return void
 	 */
-	public function requestChildren($fulltree = false)
+	public function addChild(Sabre_DAV_S3_INode $node)
 	{
-		parent::requestChildren($fulltree);
-
-		try
+		if ($node->getName() === '.')
 		{
-			$this->metafile = $this->getChild('.');
-			$this->removeChild('.');
+			$this->metafile = $node;
+
+			$id = $node->getID();
+			if ($this->metafile_id !== $id)
+			{
+				$this->metafile_id = $id;
+				$this->markDirty();
+			}
 		}
-		catch (Exception $e) {}
+		else
+			parent::addChild($node);
 	}
 
 	/**
@@ -161,6 +227,37 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	}
 
 	/**
+	 * Returns the node's Storage Redundancy setting or it's default for child nodes
+	 *
+	 * @return string
+	 */
+	public function getStorageClass()
+	{
+		$metafile = $this->getMetaFile();
+
+		if (isset($metafile))
+			parent::setStorageClass($metafile->getStorageClass());
+
+		return parent::getStorageClass();
+	}
+
+	/**
+	 * Sets the node's Storage Redundancy setting or it's default for child nodes
+	 *
+	 * @param string $storageclass
+	 * @return void
+	 */
+	public function setStorageClass($storageclass)
+	{
+		$metafile = $this->getMetaFile();
+
+		if (isset($metafile))
+			$metafile->setStorageClass($storageclass);
+
+		parent::setStorageClass($storageclass);
+	}
+
+	/**
 	 * Deletes the entire bucket including versioning of files.
 	 * Be careful, this cannot be undone!!! However, not possible to invoke when buckets are root nodes.
 	 * @todo Check what happens when you request a move (copy and delete) of the root. Possible security issue!
@@ -170,18 +267,15 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 */
 	public function delete()
 	{
-		if ($this->parent && $this->parent instanceof Sabre_DAV_S3_Account && $this->parent->isReadonly())
+		$parent = $this->getParent();
+		if ($parent && $parent instanceof Sabre_DAV_S3_Account && $parent->isReadonly())
 			throw new Sabre_DAV_Exception_MethodNotAllowed('S3 Account is read only');
 
-		$response = $this->getS3()->delete_bucket
-		(
-			$this->bucket,
-			true
-		);
+		$response = $this->getS3()->delete_bucket($this->bucket, true);
 		if ($response === false || !$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 DELETE Bucket failed', $response);
 
-		$this->children = array();
-		parent::delete();
+		$parent->removeChild($this->name);
+		$this->remove();
 	}
 }

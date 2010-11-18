@@ -9,18 +9,11 @@
  * @author Paul Voegler
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
-abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
+abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_INode
 {
 	/**
-	 * The node's internal ID (for caching purposes)
-	 * 
-	 * @var string
-	 */
-	protected $id = null;
-
-	/**
 	 * The node's name
-	 * 
+	 *
 	 * @var string
 	 */
 	protected $name = null;
@@ -34,25 +27,24 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 
 	/**
 	 * The node's parent node's ID
-	 * 
+	 *
 	 * @var string
 	 */
 	protected $parent_id = null;
 
 	/**
-	 * The Amazon S3 SDK instance for API calls
+	 * This node's Amazon S3 SDK instance for API calls
 	 *
 	 * @var AmazonS3
 	 */
-	protected $s3 = null;
+	private $s3 = null;
 
 	/**
-	 * The node's S3 endpoint Region
-	 * Valid values are [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1]
-	 * 
-	 * @var string 
+	 * The default Amazon S3 SDK instance for API calls
+	 *
+	 * @var AmazonS3
 	 */
-	protected $region = null;
+	private static $default_s3 = null;
 
 	/**
 	 * Indicates if the full set of metadata including ACL has been requested
@@ -93,71 +85,17 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 
 	/**
 	 * Sets up the node
-	 * If $parent is not given, a S3 instance or Amazon credentials ($key, $secret_key) have to be given
 	 *
 	 * @param string $name The node's display name returned by getName()
 	 * @param Sabre_DAV_S3_ICollection $parent
-	 * @param AmazonS3 $s3
-	 * @param string $key
-	 * @param string $secret_key
-	 * @param string $region [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1]
-	 * @param bool $use_ssl
 	 * @return void
 	 */
-	public function __construct($name, Sabre_DAV_S3_ICollection $parent = null, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
+	public function __construct($name, Sabre_DAV_S3_ICollection $parent = null)
 	{
 		$this->name = $name;
 
-		//default values
-		$this->region = AmazonS3::REGION_US_E1;
-		if (!isset($use_ssl))
-			$use_ssl = true;
-
 		if (isset($parent))
-		{
-			$this->parent = $parent;
-			$this->s3 = $parent->getS3();
-			$this->region = $parent->getRegion();
-		}
-
-		if (isset($s3))
-			$this->s3 = $s3;
-
-		if (isset($region))
-			$this->region = $region;
-
-		if (isset($key) && isset($secret_key))
-		{
-			$this->s3 = new AmazonS3($key, $secret_key);
-			$this->s3->set_region($this->region);
-			if (!$use_ssl)
-				$this->s3->disable_ssl();
-		}
-		
-		$this->id = $this->createID();
-	}
-
-	/**
-	 * Save the node
-	 */
-	public function __sleep()
-	{
-		$this->parent_id = null;
-		if (isset($this->parent))
-			$this->parent_id = $this->parent->getID();
-
-		return array
-		(
-			'id',
-			'name',
-			'parent_id',
-			'region',
-			'metadata_requested',
-			'lastmodified',
-			'storageclass',
-			'owner',
-			'acl'
-		);
+			$this->setParent($parent);
 	}
 
 	/**
@@ -229,14 +167,14 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	 * @param bool $force
 	 * @return void
 	 */
-	protected function requestMetaData($force = false)
+	public function requestMetaData($force = false)
 	{
 		if (!$force && $this->metadata_requested)
 			return;
-			
+
 		if (!isset($this->lastmodified))
 			$this->setLastModified(0);
-/*		if (!isset($this->size))
+			/*		if (!isset($this->size))
 			$this->setSize(0);
 		if (!isset($this->etag))
 			$this->setETag('');
@@ -253,27 +191,6 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	}
 
 	/**
-	 * Creates a unique ID for this node
-	 * Subclasses need to overwrite this function!
-	 * 
-	 * @return string
-	 */
-	protected function createID()
-	{
-		return 'AmazonS3 <Bucket> <Object> <Principal>';
-	}
-
-	/**
-	 * Returns the node's ID
-	 *
-	 * @return string
-	 */
-	public function getID()
-	{
-		return $this->id;
-	}
-
-	/**
 	 * Returns the node's name
 	 *
 	 * @return string
@@ -284,35 +201,30 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	}
 
 	/**
-	 * Sets the node's name
-	 *
-	 * @param string $name
-	 * @return void
-	 */
-	public function setName($name)
-	{
-		if ($this->parent)
-			$this->parent->removeChild($this->name);
-
-		$this->name = $name;
-
-		if ($this->parent)
-			$this->parent->addChild($this);
-	}
-
-	/**
 	 * Returns the node's parent
 	 *
 	 * @return Sabre_DAV_S3_ICollection
 	 */
 	public function getParent()
 	{
+		if (!isset($this->parent) && isset($this->parent_id) && $this->getEntityManager())
+		{
+			$node = $this->getEntityManager()->find($this->parent_id);
+			if ($node)
+				$this->setParent($node);
+			else
+			{
+				$this->parent_id = null;
+				$this->markDirty();
+			}
+		}
+
 		return $this->parent;
 	}
 
 	/**
 	 * Sets this node's parent
-	 * 
+	 *
 	 * @param Sabre_DAV_S3_ICollection $node
 	 * @return void
 	 */
@@ -320,12 +232,11 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	{
 		$this->parent = $node;
 
-		if (isset($node))
+		$id = $node->getID();
+		if ($this->parent_id !== $id)
 		{
-			if (!isset($this->s3))
-				$this->s3 = $node->getS3();
-			if (!isset($this->region))
-				$this->region = $node->getRegion();
+			$this->parent_id = $node->getID();
+			$this->markDirty();
 		}
 	}
 
@@ -334,36 +245,82 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	 *
 	 * @return AmazonS3
 	 */
-	public function getS3()
+	public final function getS3()
 	{
-		if (isset($this->s3) && isset($this->region))
-			$this->s3->set_region($this->region);
+		if (isset($this->s3))
+			return $this->s3;
 
-		return $this->s3;
+		if (isset($this->parent))
+			return $this->parent->getS3();
+
+		$class = __CLASS__;
+		return $class::$default_s3;
 	}
 
 	/**
-	 * Returns the node's S3 endpoint Region or it's default setting for child nodes
-	 * 
-	 * @return string
-	 */
-	public function getRegion()
-	{
-		return $this->region;
-	}
-
-	/**
-	 * Sets the node's S3 endpoint Region or it's default setting for child nodes
-	 * 
-	 * @param string $region Valid values are [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1] 
+	 * Sets the node's S3 instance
+	 *
+	 * @param AmazonS3 $s3
 	 * @return void
 	 */
-	public function setRegion($region)
+	public final function setS3(AmazonS3 $s3 = null)
 	{
-		$this->region = $region;
-		
-		if ($this->s3)
-			$this->s3->set_region($region);
+		$this->s3 = $s3;
+
+		$class = __CLASS__;
+		if (isset($s3) && !isset($class::$default_s3))
+			$class::$default_s3 = $s3;
+	}
+
+	/**
+	 * Sets the default S3 instance
+	 *
+	 * @param AmazonS3 $s3
+	 * @return void
+	 */
+	public static final function setDefaultS3(AmazonS3 $s3)
+	{
+		$class = __CLASS__;
+		if (isset($s3))
+			$class::$default_s3 = $s3;
+	}
+
+	/**
+	 * Returns the node's Key
+	 *
+	 * @return string
+	 */
+	public function getKey()
+	{
+		return array('name' => $this->name);
+	}
+
+	/**
+	 * Returns the property names to persist in a two dimensional array with the first array key being __CLASS__ and the second array a list of property names for that class.
+	 * Every subclass with new properties to persist has to overwrite this function and return the merged array with it's parent class
+	 *
+	 * @return array
+	 */
+	public function getPersistentProperties()
+	{
+		return array_merge(parent::getPersistentProperties(), array(__CLASS__ => array('name', 'parent_id', 'metadata_requested', 'lastmodified', 'storageclass', 'owner', 'acl')));
+	}
+
+	/**
+	 * Gets called just after the Object was refreshed
+	 *
+	 * @param Sabre_DAV_S3_IEntityManager $entitymanager
+	 * @return bool
+	 */
+	public function _afterRefresh(Sabre_DAV_S3_IEntityManager $entitymanager)
+	{
+		if (isset($this->parent) && $this->parent->getID() !== $this->parent_id)
+		{
+			$this->parent_id = $this->parent->getID();
+			$this->markDirty();
+		}
+
+		return true;
 	}
 
 	/**
@@ -387,7 +344,11 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	 */
 	public function setLastModified($lastmodified)
 	{
-		$this->lastmodified = $lastmodified;
+		if ($this->lastmodified !== $lastmodified)
+		{
+			$this->lastmodified = $lastmodified;
+			$this->markDirty();
+		}
 	}
 
 	/**
@@ -411,7 +372,11 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	 */
 	public function setStorageClass($storageclass)
 	{
-		$this->storageclass = $storageclass;
+		if ($this->storageclass !== $storageclass)
+		{
+			$this->storageclass = $storageclass;
+			$this->markDirty();
+		}
 	}
 
 	/**
@@ -435,7 +400,11 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	 */
 	public function setOwner($owner)
 	{
-		$this->owner = $owner;
+		if ($this->owner !== $owner)
+		{
+			$this->owner = $owner;
+			$this->markDirty();
+		}
 	}
 
 	/**
@@ -460,9 +429,13 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	public function setACL($acl)
 	{
 		if (is_array($acl))
-			$this->acl = $this->cannedACL($acl);
-		else
+			$acl = $this->cannedACL($acl);
+
+		if ($this->acl !== $acl)
+		{
 			$this->acl = $acl;
+			$this->markDirty();
+		}
 	}
 
 	/**
@@ -472,7 +445,7 @@ abstract class Sabre_DAV_S3_Node implements Sabre_DAV_S3_INode
 	 */
 	public function delete()
 	{
-		if ($this->parent)
-			$this->parent->removeChild($this->name);
+		$this->getParent()->removeChild($this->name);
+		$this->remove();
 	}
 }

@@ -18,61 +18,55 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 	protected $s3 = null;
 
 	/**
-	 * The default S3 endpoint Region
-	 * Valid values are [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1]
-	 * 
-	 * @var string 
+	 * Persistence Entity Manager reference
+	 *
+	 * @var Sabre_DAV_S3_IEntityManager
 	 */
-	protected $region = null;
+	protected $entitymanager = null;
 
 	/**
 	 * Sets up the tree
-	 * S3 instance or Amazon credentials have to be given if $rootnode has no S3 instance 
+	 * S3 instance or Amazon credentials have to be given if $rootnode has no S3 instance
 	 *
 	 * @param Sabre_DAV_S3_ICollection $rootnode
-	 * @param string $s3
-	 * @param string $key
-	 * @param string $secret_key
-	 * @param string $region [AmazonS3::REGION_US_E1, AmazonS3::REGION_US_W1, AmazonS3::REGION_EU_W1, AmazonS3::REGION_APAC_SE1]
-	 * @param bool $use_ssl
+	 * @param AmazonS3 $s3
+	 * @param Sabre_DAV_S3_IEntityManager $entitymanager
 	 * @return void
 	 */
-	public function __construct(Sabre_DAV_S3_ICollection $rootnode, AmazonS3 $s3 = null, $key = null, $secret_key = null, $region = AmazonS3::REGION_US_E1, $use_ssl = true)
+	public function __construct(Sabre_DAV_S3_ICollection $rootnode, AmazonS3 $s3 = null, Sabre_DAV_S3_IEntityManager $entitymanager = null)
 	{
 		parent::__construct($rootnode);
-
-		//default values
-		$this->region = AmazonS3::REGION_US_E1;
-		if (!isset($use_ssl))
-			$use_ssl = true;
 
 		if (isset($rootnode))
 		{
 			$this->cache[''] = $rootnode;
 			$this->s3 = $rootnode->getS3();
-			$this->region = $rootnode->getRegion();
+			$this->entitymanager = $rootnode->getEntityManager();
 		}
 
 		if (isset($s3))
 			$this->s3 = $s3;
-			
-		if (isset($region))
-			$this->region = $region;
 
-		if (isset($key) && isset($secret_key))
+		if (isset($entitymanager))
+			$this->entitymanager = $entitymanager;
+
+		if (isset($rootnode))
 		{
-			$this->s3 = new AmazonS3($key, $secret_key);
-			$this->s3->set_region($this->region);
-			if (!$use_ssl)
-				$this->s3->disable_ssl();
+			if (!$rootnode->getS3())
+				$rootnode->setS3($this->s3);
+			if (!$rootnode->getEntityManager())
+				$rootnode->setEntityManager($this->entitymanager);
+
+			$rootnode->modernize();
+			$rootnode->persist(true);
 		}
 	}
 
 	/**
-	 * Returns the S3 Object node for the requested path  
-	 * 
-	 * @param string $path 
-	 * @return Sabre_DAV_S3_Node 
+	 * Returns the S3 Object node for the requested path
+	 *
+	 * @param string $path
+	 * @return Sabre_DAV_S3_Node
 	 */
 	public function getNodeForPath($path)
 	{
@@ -109,36 +103,37 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 		$childNode = null;
 
 		if ($parent === '')
-		{ 
+		{
 			if ($pathprefix === '')
 			{
-				if ($child === '')	//case "/"
+				if ($child === '') //case "/"
 					$childNode = $this->rootNode;
-				else	//case "/object"
+				else //case "/object"
 					$parentNode = $this->rootNode;
 			}
 			else
 			{
-				if ($child === '')	//case "/bucket"
+				if ($child === '') //case "/bucket"
 				{
 					$parentNode = $this->rootNode;
 					//easiest way to get the child node and set the cache correctly
 					$child = $bucket;
 					$pathprefix = '';
 				}
-				else	//case "/bucket/object"
+				else //case "/bucket/object"
 				{
 					if (isset($this->cache[$bucket]))
 						$parentNode = $this->cache[$bucket];
 					else
 					{
-						$parentNode = new Sabre_DAV_S3_Bucket($bucket, $this->rootNode);
+						$parentNode = Sabre_DAV_S3_Bucket::getInstanceByKey(array('bucket' => $bucket), $bucket, $this->rootNode);
+						$parentNode->refresh();
 						$this->rootNode->addChild($parentNode);
 					}
 				}
 			}
 		}
-		else	//case "/folder[/subfolder]/object" and "/bucket/folder[/subfolder]/object"
+		else //case "/folder[/subfolder]/object" and "/bucket/folder[/subfolder]/object"
 		{
 			list($grandparent, $parentName) = Sabre_DAV_URLUtil::splitPath($parent);
 			$grandparent = isset($grandparent) ? $grandparent : '';
@@ -146,24 +141,24 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 			$grandparentNode = null;
 			if ($grandparent === '')
 			{
-				if ($pathprefix === '')	//case "/folder/object"
+				if ($pathprefix === '') //case "/folder/object"
 					$grandparentNode = $this->rootNode;
-				elseif (isset($this->cache[$bucket]))	//case "/bucket/folder/object"
+				elseif (isset($this->cache[$bucket])) //case "/bucket/folder/object"
 					$grandparentNode = $this->cache[$bucket];
 			}
-			elseif (isset($this->cache[$pathprefix . $grandparent]))	//case "/folder/subfolder/object" and "/bucket/folder/subfolder/object"
+			elseif (isset($this->cache[$pathprefix . $grandparent])) //case "/folder/subfolder/object" and "/bucket/folder/subfolder/object"
 				$grandparentNode = $this->cache[$pathprefix . $grandparent];
 
 			if (isset($grandparentNode))
 			{
 				$objectprefix = $grandparentNode instanceof Sabre_DAV_S3_Object ? $grandparentNode->getObject() : '';
-				$parentNode = new Sabre_DAV_S3_Directory($objectprefix . $parentName, $grandparentNode);
+				$parentNode = Sabre_DAV_S3_Directory::getInstanceByKey(array('bucket' => $bucket, 'object' => $objectprefix . $parentName), $objectprefix . $parentName, $grandparentNode, $bucket);
 				$grandparentNode->addChild($parentNode);
 			}
 			else
 			{
 				$objectprefix = $this->rootNode instanceof Sabre_DAV_S3_Object ? $this->rootNode->getObject() : '';
-				$parentNode = new Sabre_DAV_S3_Directory($objectprefix . $parent, null, $bucket, $this->s3, null, null, $this->region, null);
+				$parentNode = Sabre_DAV_S3_Directory::getInstanceByKey(array('bucket' => $bucket, 'object' => $objectprefix . $parent), $objectprefix . $parent, null, $bucket);
 			}
 		}
 
@@ -188,7 +183,7 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 
 	/**
 	 * Checks if a the node to a given path exists
-	 * 
+	 *
 	 * @param string $path
 	 */
 	public function nodeExists($path)
@@ -198,7 +193,9 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 			$this->getNodeForPath($path);
 			return true;
 		}
-		catch (Sabre_DAV_Exception_FileNotFound $e) {}
+		catch (Sabre_DAV_Exception_FileNotFound $e)
+		{
+		}
 
 		return false;
 	}
@@ -215,51 +212,34 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 	{
 		if (!isset($destinationName) || $destinationName === '')
 			$destinationName = $source->getName();
-		
+
 		if ($source instanceof Sabre_DAV_S3_File)
 		{
 			if ($destinationParent instanceof Sabre_DAV_S3_Account)
 				throw new Sabre_DAV_Exception_MethodNotAllowed('Objects cannot be stored in root if root is a collection of Buckets');
-			//request storage and acl before content-type to provoke a requestMetaData if nessecary. Content-Type is set to an empty string, not null, in File constructor
+				//request storage and acl before content-type to provoke a requestMetaData if nessecary. Content-Type is set to an empty string, not null, in File constructor
+
+
 			$destination = new Sabre_DAV_S3_File($destinationParent->getObject() . $destinationName, $destinationParent);
+			$destination->persist();
+
 			$destination->setLastModified(time());
 			$destination->setSize($source->getSize());
 			$destination->setETag($source->getETag());
 			$destination->setStorageClass($source->getStorageClass());
 			$destination->setACL($source->getACL());
 			$destination->setContentType($source->getContentType());
-			
+
 			$s3 = $destinationParent->getS3();
 			if (!$s3)
 				$s3 = $this->getS3();
-			$response = $s3->copy_object
-			(
-				array
-				(
-					'bucket' => $source->getBucket(),
-					'filename' => $source->getObject()
-				),
-				array
-				(
-					'bucket' => $destination->getBucket(),
-					'filename' => $destination->getObject()
-				),
-				array
-				(
-					'headers' => array
-					(
-						'Content-Type' => $destination->getContentType()
-					),
-					'storage' => $destination->getStorageClass(),
-					'acl' => $destination->getACL()
-				)
-			);
+			$response = $s3->copy_object(array('bucket' => $source->getBucket(), 'filename' => $source->getObject()), array('bucket' => $destination->getBucket(), 'filename' => $destination->getObject()), array('headers' => array('Content-Type' => $destination->getContentType()), 'storage' => $destination->getStorageClass(), 'acl' => $destination->getACL()));
 			if (!$response->isOK())
 				throw new Sabre_DAV_S3_Exception('S3 PUT Object (Copy) failed', $response);
-			
+
 			$destinationParent->addChild($destination);
 		}
-		elseif ($source instanceof Sabre_DAV_S3_ICollection)	//recurse into subdirectories
+		elseif ($source instanceof Sabre_DAV_S3_ICollection) //recurse into subdirectories
 		{
 			if ($destinationParent instanceof Sabre_DAV_S3_Account && $destinationParent->isReadonly())
 				throw new Sabre_DAV_Exception_Forbidden('Cannot create a new bucket because the Account is read only');
@@ -267,7 +247,7 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 			$destinationParent->createDirectory($destinationName);
 			$destination = $destinationParent->getChild($destinationName);
 			foreach ($source->getChildren() as $child)
-				$this->copyNode($child, $destination);	//recursion
+				$this->copyNode($child, $destination); //recursion
 		}
 		if ($source instanceof Sabre_DAV_IProperties && $destination instanceof Sabre_DAV_IProperties)
 		{
@@ -283,9 +263,26 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 	 */
 	public function getS3()
 	{
-		if (isset($this->s3) && isset($this->region))
-			$this->s3->set_region($this->region);
-
 		return $this->s3;
+	}
+
+	/**
+	 * Returns the tree's Entity Manager
+	 *
+	 * @return Sabre_DAV_S3_IEntityManager
+	 */
+	public function getEntityManager()
+	{
+		return $this->entitymanager;
+	}
+
+	/**
+	 * Returns the cache for nodes
+	 *
+	 * @return Sabre_DAV_S3_INode[]
+	 */
+	public function getCache()
+	{
+		return $this->cache;
 	}
 }
