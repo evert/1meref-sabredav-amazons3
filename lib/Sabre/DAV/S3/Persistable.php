@@ -192,7 +192,7 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	 *
 	 * @return bool
 	 */
-	public function modernize()
+	public final function modernize()
 	{
 		if (!$this->getEntityManager())
 			return false;
