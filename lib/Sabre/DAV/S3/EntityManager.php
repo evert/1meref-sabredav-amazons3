@@ -119,7 +119,7 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 	protected function setObjectProperty(Sabre_DAV_S3_IPersistable $object, $name, $value)
 	{
 		$refobj = new ReflectionObject($object);
-		$refprop = new $refobj->getProperty($name);
+		$refprop = $refobj->getProperty($name);
 		$refprop->setAccessible(true);
 
 		$refprop->setValue($object, $value);
