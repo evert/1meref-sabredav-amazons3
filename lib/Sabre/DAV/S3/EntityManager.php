@@ -102,7 +102,7 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 	protected function getObjectProperty(Sabre_DAV_S3_IPersistable $object, $name)
 	{
 		$refobj = new ReflectionObject($object);
-		$refprop = new $refobj->getProperty($name);
+		$refprop = $refobj->getProperty($name);
 		$refprop->setAccessible(true);
 
 		return $refprop->getValue($object);
@@ -285,6 +285,9 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 		if ($object->_beforePersist($this) === false)
 			return false;
 
+		if (is_null($this->getObjectProperty($object, 'persistence_created')))
+			$this->setObjectProperty($object, 'persistence_created', time());
+
 		$id = $object->getID();
 		$class = get_class($object);
 
@@ -315,6 +318,7 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 		{
 			if ($object->_beforeSave($this) !== false)
 			{
+				$this->setObjectProperty($object, 'persistence_lastmodified', time());
 				$result = $this->save($object);
 				if ($result)
 					$object->markDirty(false);
@@ -515,6 +519,7 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 		{
 			if ($object->_beforeSave($this) !== false)
 			{
+				$this->setObjectProperty($object, 'persistence_lastmodified', time());
 				$r = $this->save($object);
 				if ($r)
 					$object->markDirty(false);
@@ -530,6 +535,7 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 			{
 				if ($object->_beforeSave($this) !== false)
 				{
+					$this->setObjectProperty($object, 'persistence_lastmodified', time());
 					$r = $this->save($object);
 					if ($r)
 						$object->markDirty(false);

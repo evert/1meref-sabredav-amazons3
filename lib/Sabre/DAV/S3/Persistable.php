@@ -247,9 +247,6 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	 */
 	public function _beforeSave(Sabre_DAV_S3_IEntityManager $entitymanager)
 	{
-		if (!isset($this->persistence_lastmodified))
-			$this->persistence_lastmodified = time();
-
 		return true;
 	}
 
@@ -283,9 +280,6 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	 */
 	public function _beforePersist(Sabre_DAV_S3_IEntityManager $entitymanager)
 	{
-		if (!isset($this->persistence_created))
-			$this->persistence_created = time();
-
 		return true;
 	}
 
