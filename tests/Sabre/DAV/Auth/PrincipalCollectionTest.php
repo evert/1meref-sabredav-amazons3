@@ -10,7 +10,7 @@ class Sabre_DAV_Auth_PrincipalCollectionTest extends PHPUnit_Framework_TestCase 
         $pc = new Sabre_DAV_Auth_PrincipalCollection($backend);
         $this->assertTrue($pc instanceof Sabre_DAV_Auth_PrincipalCollection);
 
-        $this->assertEquals(Sabre_DAV_Auth_PrincipalCollection::NODENAME,$pc->getName());
+        $this->assertEquals('principals',$pc->getName());
 
     }
 
@@ -31,4 +31,62 @@ class Sabre_DAV_Auth_PrincipalCollectionTest extends PHPUnit_Framework_TestCase 
 
     }
 
+    /**
+     * @depends testBasic
+     * @expectedException Sabre_DAV_Exception_MethodNotAllowed
+     */
+    public function testGetChildrenRestricted() {
+
+        $backend = new Sabre_DAV_Auth_MockBackend();
+        $pc = new Sabre_DAV_Auth_PrincipalCollection($backend);
+        $pc->disallowListing = true;
+        
+        $children = $pc->getChildren();
+
+    }
+
+    /**
+     * @depends testBasic
+     */
+    public function testGetChildRestrictedSelf() {
+
+        $backend = new Sabre_DAV_Auth_MockBackend();
+        $backend->setCurrentUser('principals/admin');
+        $pc = new Sabre_DAV_Auth_PrincipalCollection($backend);
+        $pc->disallowListing = true;
+        
+        $child = $pc->getChild('admin');
+        $this->assertTrue($child instanceof Sabre_DAV_Auth_Principal);
+
+    }
+
+
+    /**
+     * @depends testBasic
+     * @expectedException Sabre_DAV_Exception_Forbidden
+     */
+    public function testGetChildRestrictedOtherUser() {
+
+        $backend = new Sabre_DAV_Auth_MockBackend();
+        $backend->setCurrentUser('principals/admin');
+        $pc = new Sabre_DAV_Auth_PrincipalCollection($backend);
+        $pc->disallowListing = true;
+        
+        $child = $pc->getChild('user1');
+
+    }
+
+    /**
+     * @depends testBasic
+     * @expectedException Sabre_DAV_Exception_Forbidden
+     */
+    public function testGetChildRestrictedNotLoggedIn() {
+
+        $backend = new Sabre_DAV_Auth_MockBackend();
+        $pc = new Sabre_DAV_Auth_PrincipalCollection($backend);
+        $pc->disallowListing = true;
+        
+        $child = $pc->getChild('user1');
+
+    }
 }
