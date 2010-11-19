@@ -253,8 +253,7 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 		if (isset($this->parent))
 			return $this->parent->getS3();
 
-		$class = __CLASS__;
-		return $class::$default_s3;
+		return self::$default_s3;
 	}
 
 	/**
@@ -267,9 +266,8 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 	{
 		$this->s3 = $s3;
 
-		$class = __CLASS__;
-		if (isset($s3) && !isset($class::$default_s3))
-			$class::$default_s3 = $s3;
+		if (isset($s3) && !isset(self::$default_s3))
+			self::$default_s3 = $s3;
 	}
 
 	/**
@@ -280,9 +278,8 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 	 */
 	public static final function setDefaultS3(AmazonS3 $s3)
 	{
-		$class = __CLASS__;
 		if (isset($s3))
-			$class::$default_s3 = $s3;
+			self::$default_s3 = $s3;
 	}
 
 	/**
