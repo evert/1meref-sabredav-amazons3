@@ -55,18 +55,20 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 
 		$remote_addr = $this->server->httpRequest->getRawServerValue('REMOTE_ADDR');
 		$server_addr = $this->server->httpRequest->getRawServerValue('SERVER_ADDR');
-		if ($remote_addr !== $server_addr && $remote_addr !== '127.0.0.1')
+		if ($remote_addr !== '127.0.0.1' && $remote_addr !== $server_addr)
 		{
 			header('Connection: close', true, 403);
 			return false;
 		}
 
-		//header('Connection: close', true, 204);
-		header('Connection: close', true, 200);
+		if (strtolower($this->server->httpRequest->getHeader('Expect')) === '100-continue')
+			header('Connection: close', true, 200);
+		else
+			header('Connection: close', true, 204);
 		header('Content-Type: text/plain', true);
+
 		flush();
 		//set_time_limit(0);
-
 
 		if (!($this->server->tree instanceof Sabre_DAV_S3_Tree))
 		{
@@ -114,7 +116,12 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 						{
 							$metafile = $node->getMetaFile();
 							if ($metafile)
+							{
+								echo 'requesting bucket meta file (".")...' . PHP_EOL;
+								flush();
+
 								$metafile->requestMetaData(true);
+							}
 						}
 						$node->requestMetaData(true);
 
@@ -165,10 +172,13 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 					catch (Sabre_DAV_S3_Exception $e)
 					{
 						echo 's3 error: ' . $e->getMessage() . PHP_EOL;
-						echo 'removing: ' . $node->getID() . PHP_EOL;
+						if ($e->getHTTPCode() == 404)
+						{
+							echo 'removing: ' . $node->getID() . PHP_EOL;
+							flush();
+							$node->remove();
+						}
 						flush();
-
-						$node->remove();
 					}
 					catch (Exception $e)
 					{
@@ -221,17 +231,17 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 				$header .= 'Host: ' . $host . "\r\n";
 			$header .= "Connection: close\r\n";
 			$header .= 'Content-Length: ' . strlen($nodelist) . "\r\n";
-			//$header .= "Expect: 100-continue\r\n";
+			$header .= "Expect: 100-continue\r\n";
 			$header .= "\r\n";
 
-			$socket = fsockopen($request->getRawServerValue('SERVER_NAME'), $request->getRawServerValue('SERVER_PORT'));
+			$socket = fsockopen('tcp://localhost', $request->getRawServerValue('SERVER_PORT'));
 
 			if ($socket)
 			{
 				fwrite($socket, $header);
-				//$response = fgets($socket);
-				//if (strtoupper(trim($response, "\r\n\t ")) == 'HTTP/1.1 200 OK');
-				fwrite($socket, $nodelist);
+				$response = fgets($socket);
+				if (strtoupper(trim($response, "\r\n\t ")) == 'HTTP/1.1 100 CONTINUE')
+					fwrite($socket, $nodelist);
 				fclose($socket);
 			}
 		}

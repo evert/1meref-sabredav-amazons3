@@ -13,24 +13,21 @@
 class Sabre_DAV_S3_Exception extends Sabre_DAV_Exception
 {
 	/**
-	 * The S3 response
+	 * The S3 response or staus code
 	 *
-	 * @var ResponseCore
+	 * @var ResponseCore|int
 	 */
-	protected $s3response;
+	protected $response;
 
 	/**
 	 * Creates the exception
 	 *
 	 * @param string $message
-	 * @param ResponseCore $s3response The S3 response object
-	 * @todo still need to figure out what to do with the S3 response object
+	 * @param ResponseCore|int $s3response The S3 response object or just a status code
 	 */
-	public function __construct($message, $s3response = null)
+	public function __construct($message, $response = null)
 	{
-		$this->s3response = $s3response;
-		if ($s3response)
-			$message .= ' (S3 status: ' . $s3response->status . ')';
+		$this->response = $response;
 		parent::__construct($message);
 	}
 
@@ -41,8 +38,13 @@ class Sabre_DAV_S3_Exception extends Sabre_DAV_Exception
 	 */
 	public function getHTTPCode()
 	{
-		if ($this->s3response)
-			return $s3response->status;
+		if (isset($this->response))
+		{
+			if (is_int($this->response))
+				return $this->response;
+			else
+				return $this->response->status;
+		}
 		else
 			return 500;
 	}
