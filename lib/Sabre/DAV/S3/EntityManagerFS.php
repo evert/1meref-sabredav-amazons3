@@ -43,10 +43,8 @@ class Sabre_DAV_S3_EntityManagerFS extends Sabre_DAV_S3_EntityManager
 	{
 		$path = rtrim($datadir, '/\\');
 		if (strpos($datadir, '/') !== 0 && strpos($datadir, '\\') !== 0 && strpos($datadir, ':') !== 1)
-		{
-			$basepath = dirname($_SERVER['SCRIPT_FILENAME']);
-			$path = $basepath . DIRECTORY_SEPARATOR . $path;
-		}
+			$path = getcwd() . DIRECTORY_SEPARATOR . $path;
+
 		if ($path !== '' && file_exists($path))
 		{
 			$this->datadir = $path;
