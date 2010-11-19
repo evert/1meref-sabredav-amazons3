@@ -52,8 +52,7 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	 */
 	public static final function getEntityManager()
 	{
-		$class = __CLASS__;
-		return $class::$entitymanager;
+		return self::$entitymanager;
 	}
 
 	/**
@@ -64,9 +63,8 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	 */
 	public static final function setEntityManager(Sabre_DAV_S3_IEntityManager $entitymanager = null)
 	{
-		$class = __CLASS__;
-		if (isset($entitymanager) && !isset($class::$entitymanager))
-			$class::$entitymanager = $entitymanager;
+		if (isset($entitymanager) && !isset(self::$entitymanager))
+			self::$entitymanager = $entitymanager;
 	}
 
 	/**
