@@ -39,7 +39,7 @@ interface Sabre_DAV_S3_INode extends Sabre_DAV_INode, Sabre_DAV_S3_IPersistable
 	 * @param AmazonS3 $s3
 	 * @return void
 	 */
-	public function setS3(AmazonS3 $s3);
+	public function setS3(AmazonS3 $s3 = null);
 
 	/**
 	 * Sets the default S3 instance
@@ -47,7 +47,7 @@ interface Sabre_DAV_S3_INode extends Sabre_DAV_INode, Sabre_DAV_S3_IPersistable
 	 * @param AmazonS3 $s3
 	 * @return void
 	 */
-	public static function setDefaultS3(AmazonS3 $s3);
+	public static function setDefaultS3(AmazonS3 $s3 = null);
 
 	/**
 	 * Sets the node's last modification time

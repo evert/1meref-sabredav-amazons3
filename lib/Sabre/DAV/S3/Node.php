@@ -276,7 +276,7 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 	 * @param AmazonS3 $s3
 	 * @return void
 	 */
-	public static final function setDefaultS3(AmazonS3 $s3)
+	public static final function setDefaultS3(AmazonS3 $s3 = null)
 	{
 		if (isset($s3))
 			self::$default_s3 = $s3;
