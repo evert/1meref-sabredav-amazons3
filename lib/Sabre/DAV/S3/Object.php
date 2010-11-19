@@ -87,7 +87,7 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 
 		$data = $this->getS3()->get_object_metadata($this->bucket, $this->object);
 		if (!$data)
-			throw new Sabre_DAV_S3_Exception('S3 Object metadata retrieve failed');
+			throw new Sabre_DAV_S3_Exception('S3 Object metadata retrieve failed', 404);
 
 		if (isset($data['LastModified']))
 		{
