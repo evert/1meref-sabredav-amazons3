@@ -24,7 +24,7 @@ interface Sabre_DAV_S3_IPersistable
 	 * @param Sabre_DAV_S3_IEntityManager $entitymanager
 	 * @return void
 	 */
-	public static function setEntityManager(Sabre_DAV_S3_IEntityManager $entitymanager);
+	public static function setEntityManager(Sabre_DAV_S3_IEntityManager $entitymanager = null);
 
 	/**
 	 * Find the Object by Key or create a new Instance
