@@ -19,11 +19,11 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 	protected $children = array();
 
 	/**
-	 * The Account's Buckets' ID
+	 * The Account's Buckets' Object ID
 	 *
 	 * @var string[]
 	 */
-	protected $children_id = array();
+	protected $children_oid = array();
 
 	/**
 	 * Did we populate the list of Buckets from S3?
@@ -96,7 +96,7 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 	 */
 	public function getPersistentProperties()
 	{
-		return array_merge(parent::getPersistentProperties(), array(__CLASS__ => array('children_id', 'children_requested', 'readonly')));
+		return array_merge(parent::getPersistentProperties(), array(__CLASS__ => array('children_oid', 'children_requested', 'readonly')));
 	}
 
 	/**
@@ -111,13 +111,13 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 
 		if ($this->children_supplied)
 		{
-			$oldchildren = $this->children_id;
-			$this->children_id = array();
+			$oldchildren = $this->children_oid;
+			$this->children_oid = array();
 
 			foreach ($this->children as $child)
-				array_push($this->children_id, $child->getID());
+				array_push($this->children_oid, $child->getOID());
 
-			if ($this->children_id !== $oldchildren)
+			if ($this->children_oid !== $oldchildren)
 				$this->markDirty();
 		}
 		else
@@ -252,19 +252,19 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 	 */
 	public function getChildren()
 	{
-		if (empty($this->children) && $this->getEntityManager() && !empty($this->children_id))
+		if (empty($this->children) && $this->getEntityManager() && !empty($this->children_oid))
 		{
 			$dirtystate = $this->isDirty();
 
-			foreach ($this->children_id as $child_id)
+			foreach ($this->children_oid as $child_oid)
 			{
-				$node = $this->getEntityManager()->find($child_id);
+				$node = $this->getEntityManager()->find($child_oid);
 				if ($node)
 					$this->addChild($node);
 				else
 				{
 					$this->children = array();
-					$this->children_id = array();
+					$this->children_oid = array();
 					$this->children_requested = false;
 					$dirtystate = true;
 					break;
@@ -315,10 +315,10 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 	public function addChild(Sabre_DAV_S3_INode $node)
 	{
 		$this->children[$node->getName()] = $node;
-		$id = $node->getID();
-		if (!in_array($id, $this->children_id))
+		$oid = $node->getOID();
+		if (!in_array($oid, $this->children_oid))
 		{
-			array_push($this->children_id, $id);
+			array_push($this->children_oid, $oid);
 			$this->markDirty();
 		}
 	}
@@ -334,10 +334,10 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 		$node = $this->getChild($name);
 		if ($node)
 		{
-			$id = $node->getID();
-			$offset = array_search($id, $this->children_id);
+			$oid = $node->getOID();
+			$offset = array_search($oid, $this->children_oid);
 			if ($offset !== false)
-				array_splice($this->children_id, $offset, 1);
+				array_splice($this->children_oid, $offset, 1);
 			unset($this->children[$name]);
 			$this->markDirty();
 		}

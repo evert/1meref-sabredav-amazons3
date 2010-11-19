@@ -96,15 +96,15 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 		echo 'updating: ' . PHP_EOL . $body;
 		flush();
 
-		$id = strtok($body, "\r\n");
-		while ($id !== false)
+		$oid = strtok($body, "\r\n");
+		while ($oid !== false)
 		{
-			if ($id !== '')
+			if ($oid !== '')
 			{
-				echo PHP_EOL . 'searching: ' . $id . PHP_EOL;
+				echo PHP_EOL . 'searching: ' . $oid . PHP_EOL;
 				flush();
 
-				$node = $em->find($id);
+				$node = $em->find($oid);
 				if ($node)
 				{
 					try
@@ -174,7 +174,7 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 						echo 's3 error: ' . $e->getMessage() . PHP_EOL;
 						if ($e->getHTTPCode() == 404)
 						{
-							echo 'removing: ' . $node->getID() . PHP_EOL;
+							echo 'removing: ' . $node->getOID() . PHP_EOL;
 							flush();
 							$node->remove();
 						}
@@ -187,7 +187,7 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 					}
 				}
 			}
-			$id = strtok("\r\n");
+			$oid = strtok("\r\n");
 		}
 
 		echo PHP_EOL . 'flushing persistence context...' . $id_removed . PHP_EOL . PHP_EOL;
@@ -220,7 +220,7 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 
 		$nodelist = '';
 		foreach ($cache as $node)
-			$nodelist .= $node->getID() . "\n";
+			$nodelist .= $node->getOID() . "\n";
 
 		$request = $this->server->httpRequest;
 		if (!empty($nodelist))

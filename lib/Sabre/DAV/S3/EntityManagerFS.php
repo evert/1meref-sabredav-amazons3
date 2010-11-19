@@ -35,41 +35,74 @@ class Sabre_DAV_S3_EntityManagerFS extends Sabre_DAV_S3_EntityManager
 	 * Initialize the Entity Manager
 	 *
 	 * @param string $datadir
+	 * @param int $ormstrategy
 	 * @param int $flushmode
 	 * @return void
 	 */
-	public function __construct($datadir, $flushmode = Sabre_DAV_S3_EntityManagerFS::FLUSH_UNLOAD)
+	public function __construct($datadir, $ormstrategy = Sabre_DAV_S3_IEntityManager::ORM_SINGLE_TABLE, $flushmode = Sabre_DAV_S3_EntityManagerFS::FLUSH_UNLOAD)
 	{
-		$datadir = rtrim($datadir, '/\\');
-		if ($datadir !== '' && file_exists($datadir))
+		$path = rtrim($datadir, '/\\');
+		if (strpos($datadir, '/') !== 0 && strpos($datadir, '\\') !== 0 && strpos($datadir, ':') !== 1)
 		{
-			$this->datadir = $datadir . DIRECTORY_SEPARATOR;
+			$basepath = dirname($_SERVER['SCRIPT_FILENAME']);
+			$path = $basepath . DIRECTORY_SEPARATOR . $path;
+		}
+		if ($path !== '' && file_exists($path))
+		{
+			$this->datadir = $path;
 			$this->isopen = true;
 		}
 
+		$this->ormstrategy = $ormstrategy;
 		$this->setFlushMode($flushmode);
 	}
 
 	/**
-	 * Get the file name for a given id
+	 * Get the file directory for a given Object ID
 	 *
-	 * @param string $id
+	 * @param string $oid
 	 * @return string
 	 */
-	protected function getFileName($id)
+	protected function getFileDir($oid)
 	{
-		return $this->datadir . Sabre_DAV_S3_EntityManagerFS::FILE_PREFIX . str_replace(':', DIRECTORY_SEPARATOR, $id) . Sabre_DAV_S3_EntityManagerFS::FILE_EXTENSION;
+		$class_id = explode(':', $oid);
+
+		switch ($this->ormstrategy)
+		{
+			case Sabre_DAV_S3_IEntityManager::ORM_SINGLE_TABLE:
+				return $this->datadir;
+			case Sabre_DAV_S3_IEntityManager::ORM_CONCRETE_CLASS:
+				return $this->datadir . DIRECTORY_SEPARATOR . $class_id[0];
+			default:
+				return null;
+		}
 	}
 
 	/**
-	 * Load the Entity with the given id
+	 * Get the file name for a given Object ID
 	 *
-	 * @param string $id
+	 * @param string $oid
+	 * @return string
+	 */
+	protected function getFileName($oid)
+	{
+		$dir = $this->getFileDir($oid);
+
+		if ($dir)
+			return $dir . DIRECTORY_SEPARATOR . Sabre_DAV_S3_EntityManagerFS::FILE_PREFIX . str_replace(':', '-', $oid) . Sabre_DAV_S3_EntityManagerFS::FILE_EXTENSION;
+		else
+			return null;
+	}
+
+	/**
+	 * Load the Entity with the given Object ID
+	 *
+	 * @param string $oid
 	 * @return Sabre_DAV_S3_IPersistable|bool
 	 */
-	protected function load($id)
+	protected function load($oid)
 	{
-		$filename = $this->getFileName($id);
+		$filename = $this->getFileName($oid);
 
 		if (!file_exists($filename))
 			return false;
@@ -93,13 +126,12 @@ class Sabre_DAV_S3_EntityManagerFS extends Sabre_DAV_S3_EntityManager
 	 */
 	protected function save(Sabre_DAV_S3_IPersistable $object)
 	{
-		$id = $object->getID();
-		$filename = $this->getFileName($id);
-		$dir = explode(':', $id);
-		$dir = $dir[0];
+		$oid = $object->getOID();
+		$filedir = $this->getFileDir($oid);
+		$filename = $this->getFileName($oid);
 
-		if (!file_exists($this->datadir . $dir))
-			mkdir($this->datadir . $dir);
+		if (!file_exists($filedir))
+			mkdir($filedir, 0777, true);
 
 		$fh = fopen($filename, 'w');
 		if ($fh === false)
@@ -112,46 +144,12 @@ class Sabre_DAV_S3_EntityManagerFS extends Sabre_DAV_S3_EntityManager
 	}
 
 	/**
-	 * Delete the given Entity
+	 * Delete the given Entity by Object ID
 	 *
-	 * @param string $id
+	 * @param string $oid
 	 */
-	protected function delete($id)
+	protected function delete($oid)
 	{
-		return @unlink($this->getFileName($id));
-	}
-
-	/**
-	 * Remove all expired Entities
-	 *
-	 * @param int $before timestamp
-	 * @param string $class
-	 */
-	public function expire($before, $class = null)
-	{
-		if (!$this->isopen)
-			throw new ErrorException('Entity Manager is in an illegal state');
-
-		$classes = array();
-		if (!isset($class))
-		{
-			foreach (glob($this->datadir . '*') as $dir)
-				if (is_dir($dir) && $dir !== '.' && $dir !== '..')
-					array_push($classes, basename($dir));
-		}
-		else
-			$classes = array($class);
-
-		foreach ($classes as $class)
-		{
-			foreach (glob($this->datadir . $class . DIRECTORY_SEPARATOR . Sabre_DAV_S3_EntityManagerFS::FILE_PREFIX . '*' . Sabre_DAV_S3_EntityManagerFS::FILE_EXTENSION) as $filename)
-			{
-				$mtime = filemtime($filename);
-				if ($mtime !== false && $mtime < $before)
-					@unlink($filename);
-			}
-		}
-
-		return true;
+		return @unlink($this->getFileName($oid));
 	}
 }

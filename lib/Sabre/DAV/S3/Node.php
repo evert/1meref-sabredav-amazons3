@@ -30,7 +30,7 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 	 *
 	 * @var string
 	 */
-	protected $parent_id = null;
+	protected $parent_oid = null;
 
 	/**
 	 * This node's Amazon S3 SDK instance for API calls
@@ -207,14 +207,14 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 	 */
 	public function getParent()
 	{
-		if (!isset($this->parent) && isset($this->parent_id) && $this->getEntityManager())
+		if (!isset($this->parent) && isset($this->parent_oid) && $this->getEntityManager())
 		{
-			$node = $this->getEntityManager()->find($this->parent_id);
+			$node = $this->getEntityManager()->find($this->parent_oid);
 			if ($node)
 				$this->setParent($node);
 			else
 			{
-				$this->parent_id = null;
+				$this->parent_oid = null;
 				$this->markDirty();
 			}
 		}
@@ -232,10 +232,10 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 	{
 		$this->parent = $node;
 
-		$id = $node->getID();
-		if ($this->parent_id !== $id)
+		$oid = $node->getOID();
+		if ($this->parent_oid !== $oid)
 		{
-			$this->parent_id = $node->getID();
+			$this->parent_oid = $node->getOID();
 			$this->markDirty();
 		}
 	}
@@ -303,7 +303,7 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 	 */
 	public function getPersistentProperties()
 	{
-		return array_merge(parent::getPersistentProperties(), array(__CLASS__ => array('name', 'parent_id', 'metadata_requested', 'lastmodified', 'storageclass', 'owner', 'acl')));
+		return array_merge(parent::getPersistentProperties(), array(__CLASS__ => array('name', 'parent_oid', 'metadata_requested', 'lastmodified', 'storageclass', 'owner', 'acl')));
 	}
 
 	/**
@@ -314,9 +314,9 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 	 */
 	public function _afterRefresh(Sabre_DAV_S3_IEntityManager $entitymanager)
 	{
-		if (isset($this->parent) && $this->parent->getID() !== $this->parent_id)
+		if (isset($this->parent) && $this->parent->getOID() !== $this->parent_oid)
 		{
-			$this->parent_id = $this->parent->getID();
+			$this->parent_oid = $this->parent->getOID();
 			$this->markDirty();
 		}
 

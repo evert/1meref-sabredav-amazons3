@@ -22,7 +22,7 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 *
 	 * @var string
 	 */
-	protected $metafile_id = null;
+	protected $metafile_oid = null;
 
 	/**
 	 * Sets up the node as a bucket, wich is a special case of Directory
@@ -64,7 +64,7 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 */
 	public function getPersistentProperties()
 	{
-		return array_merge(parent::getPersistentProperties(), array(__CLASS__ => array('metafile_id')));
+		return array_merge(parent::getPersistentProperties(), array(__CLASS__ => array('metafile_oid')));
 	}
 
 	/**
@@ -93,15 +93,15 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 		if (isset($this->metafile))
 			$metafile = $this->metafile;
 
-		if (!isset($metafile) && $this->getEntityManager() && isset($this->metafile_id))
+		if (!isset($metafile) && $this->getEntityManager() && isset($this->metafile_oid))
 		{
-			$metafile = $this->getEntityManager()->find($this->metafile_id);
+			$metafile = $this->getEntityManager()->find($this->metafile_oid);
 			if ($metafile)
 				$this->addChild($metafile);
 			else
 			{
 				$metafile = null;
-				$this->metafile_id = null;
+				$this->metafile_oid = null;
 				$this->markDirty();
 			}
 		}
@@ -203,10 +203,10 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 		{
 			$this->metafile = $node;
 
-			$id = $node->getID();
-			if ($this->metafile_id !== $id)
+			$id = $node->getOID();
+			if ($this->metafile_oid !== $id)
 			{
-				$this->metafile_id = $id;
+				$this->metafile_oid = $id;
 				$this->markDirty();
 			}
 		}

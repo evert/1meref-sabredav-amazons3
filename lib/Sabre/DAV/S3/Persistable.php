@@ -18,25 +18,25 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	private static $entitymanager = null;
 
 	/**
-	 * The node's id
+	 * The node's Object ID
 	 *
 	 * @var mixed
 	 */
-	protected $id = null;
+	protected $oid = null;
 
 	/**
-	 * The timestamp when persistence was created
+	 * The timestamp when the Entity was created
 	 *
 	 * @var int
 	 */
-	protected $persistence_created = null;
+	protected $entity_created = null;
 
 	/**
-	 * The timestamp when the persistence was last modified
+	 * The timestamp when the Entity was last modified
 	 *
 	 * @var int
 	 */
-	protected $persistence_lastmodified = null;
+	protected $entity_lastmodified = null;
 
 	/**
 	 * Did the node's state change?
@@ -122,14 +122,14 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	}
 
 	/**
-	 * Returns the node's ID
+	 * Returns the node's Object ID
 	 * In the form of "Class:id"
 	 *
 	 * @return string
 	 */
-	public final function getID()
+	public final function getOID()
 	{
-		return $this->id;
+		return $this->oid;
 	}
 
 	/**
@@ -139,7 +139,7 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	 */
 	public function getKey()
 	{
-		return array('id' => $this->id);
+		return array('oid' => $this->oid);
 	}
 
 	/**
@@ -150,7 +150,15 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	 */
 	public function getPersistentProperties()
 	{
-		return array(__CLASS__ => array('id', 'persistence_created', 'persistence_lastmodified'));
+		return array
+		(
+			__CLASS__ => array
+			(
+				'oid',
+				'entity_created',
+				'entity_lastmodified'
+			)
+		);
 	}
 
 	/**
