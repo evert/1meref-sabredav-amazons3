@@ -11,6 +11,22 @@
 interface Sabre_DAV_S3_IEntityManager
 {
 	/**
+	 * Object Relational mapping strategy
+	 * All objects are stored in a single table
+	 *
+	 * @var int
+	 */
+	const ORM_SINGLE_TABLE = 1;
+
+	/**
+	 * Object Relational mapping strategy
+	 * Every concrete class has it's own table
+	 *
+	 * @var int
+	 */
+	const ORM_CONCRETE_CLASS = 2;
+
+	/**
 	 * In this flush mode Entities are only saved or removed when the Entity Manager unloads (__destruct)
 	 *
 	 * @var int
@@ -63,12 +79,12 @@ interface Sabre_DAV_S3_IEntityManager
 	public function contains(Sabre_DAV_S3_IPersistable $object);
 
 	/**
-	 * Get an Entity by id
+	 * Get an Entity by Object ID
 	 *
-	 * @param string $id
+	 * @param string $oid
 	 * @return Sabre_DAV_S3_IPersistable|bool
 	 */
-	public function find($id);
+	public function find($oid);
 
 	/**
 	 * Get an Entity by Class name and Key
@@ -81,7 +97,7 @@ interface Sabre_DAV_S3_IEntityManager
 
 	/**
 	 * Makes an Entity persistent
-	 * Assigns a new persistence id if new
+	 * Assigns a new Object ID if new
 	 *
 	 * @param Sabre_DAV_S3_IPersistable $object
 	 * @param bool $overwrite

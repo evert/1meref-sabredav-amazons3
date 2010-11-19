@@ -11,6 +11,13 @@
 abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 {
 	/**
+	 * The current Object Relational Mapping (ORM) strategy used
+	 *
+	 * @var int
+	 */
+	protected $ormstrategy = Sabre_DAV_S3_IEntityManager::ORM_SINGLE_TABLE;
+
+	/**
 	 * The current flush mode
 	 *
 	 * @var int
@@ -55,10 +62,11 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 	/**
 	 * Initialize the Entity Manager
 	 *
+	 * @param int $ormstrategy
 	 * @param int $flushmode
 	 * @return void
 	 */
-	public function __construct($flushmode = Sabre_DAV_S3_IEntityManager::FLUSH_UNLOAD)
+	public function __construct($ormstrategy = Sabre_DAV_S3_IEntityManager::ORM_SINGLE_TABLE, $flushmode = Sabre_DAV_S3_IEntityManager::FLUSH_UNLOAD)
 	{
 		$this->setFlushMode($flushmode);
 		$this->isopen = true;
@@ -81,12 +89,11 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 	 * @param $key
 	 * @param $class
 	 * @return string
-	 * @todo should this return a unique id even if there are more objects with the same Key persistent? Key vs. Primary Key...
 	 */
-	protected function generateID($class, $key)
+	protected function generateOID($class, $key)
 	{
-		if (array_key_exists('id', $key))
-			throw new ErrorException('Entity Manager cannot create generic IDs withe the id itself as part of the key');
+		if (array_key_exists('oid', $key))
+			throw new ErrorException('Entity Manager cannot create generic Object IDs with the oid itself as part of the key');
 
 		ksort($key);
 		return $class . ':' . md5(__CLASS__ . chr(0) . $class . chr(0) . implode(chr(0), $key));
@@ -126,12 +133,12 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 	}
 
 	/**
-	 * Load the Entity with the given id
+	 * Load the Entity with the given Object ID
 	 *
-	 * @param string $id
+	 * @param string $oid
 	 * @return Sabre_DAV_S3_IPersistable|bool
 	 */
-	abstract protected function load($id);
+	abstract protected function load($oid);
 
 	/**
 	 * Save the given Entity
@@ -142,11 +149,11 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 	abstract protected function save(Sabre_DAV_S3_IPersistable $object);
 
 	/**
-	 * Delete the given Entity
+	 * Delete the given Entity by Object ID
 	 *
-	 * @param string $id
+	 * @param string $oid
 	 */
-	abstract protected function delete($id);
+	abstract protected function delete($oid);
 
 	/**
 	 * Return the current flush mode
@@ -213,42 +220,42 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 		if (!$this->isopen)
 			throw new ErrorException('Entity Manager is in an illegal state');
 
-		$id = $object->getID();
+		$oid = $object->getOID();
 
-		if (!array_key_exists($id, $this->managed))
+		if (!array_key_exists($oid, $this->managed))
 			return false;
 
-		return ($object === $this->managed[$id]);
+		return ($object === $this->managed[$oid]);
 	}
 
 	/**
-	 * Get an Entity by id
+	 * Get an Entity by Object ID
 	 *
-	 * @param string $id
+	 * @param string $oid
 	 * @return Sabre_DAV_S3_IPersistable|bool
 	 */
-	public function find($id)
+	public function find($oid)
 	{
 		if (!$this->isopen)
 			throw new ErrorException('Entity Manager is in an illegal state');
 
-		if (array_key_exists($id, $this->add_detached))
+		if (array_key_exists($oid, $this->add_detached))
 		{
-			$this->managed[$id] = $this->add_detached[$id];
-			unset($this->add_detached[$id]);
+			$this->managed[$oid] = $this->add_detached[$oid];
+			unset($this->add_detached[$oid]);
 		}
 
-		if (array_key_exists($id, $this->managed))
-			return $this->managed[$id];
+		if (array_key_exists($oid, $this->managed))
+			return $this->managed[$oid];
 
-		$object = $this->load($id);
+		$object = $this->load($oid);
 		if (!$object || !($object instanceof Sabre_DAV_S3_IPersistable))
 			return false;
 		$object->markDirty(false);
 		if ($object->_afterLoad($this) === false)
 			return false;
 
-		$this->managed[$id] = $object;
+		$this->managed[$oid] = $object;
 
 		return $object;
 	}
@@ -262,14 +269,14 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 	 */
 	public function findByKey($class, $key)
 	{
-		$id = $this->generateID($class, $key);
+		$oid = $this->generateOID($class, $key);
 
-		return $this->find($id);
+		return $this->find($oid);
 	}
 
 	/**
 	 * Makes an Entity persistent
-	 * Assigns a new persistence id if new
+	 * Assigns a new persistence Object ID if new
 	 *
 	 * @param Sabre_DAV_S3_IPersistable $object
 	 * @param bool $overwrite
@@ -285,40 +292,40 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 		if ($object->_beforePersist($this) === false)
 			return false;
 
-		if (is_null($this->getObjectProperty($object, 'persistence_created')))
-			$this->setObjectProperty($object, 'persistence_created', time());
+		if (is_null($this->getObjectProperty($object, 'entity_created')))
+			$this->setObjectProperty($object, 'entity_created', time());
 
-		$id = $object->getID();
+		$oid = $object->getOID();
 		$class = get_class($object);
 
-		if (!isset($id))
+		if (!isset($oid))
 		{
-			$id = $this->generateID($class, $object->getKey());
-			$this->setObjectProperty($object, 'id', $id);
+			$oid = $this->generateOID($class, $object->getKey());
+			$this->setObjectProperty($object, 'oid', $oid);
 		}
 
-		if (!$overwrite && array_key_exists($id, $this->managed) && $this->managed[$id] !== $object)
-			throw new ErrorException("Entity Manager already manages an object with that id ($id) in this context");
+		if (!$overwrite && array_key_exists($oid, $this->managed) && $this->managed[$oid] !== $object)
+			throw new ErrorException("Entity Manager already manages an object with that oid ($oid) in this context");
 
-		$offset = array_search($id, $this->remove);
+		$offset = array_search($oid, $this->remove);
 		if ($offset !== false)
 			array_splice($this->remove, $offset, 1);
 
-		$offset = array_search($id, $this->add);
+		$offset = array_search($oid, $this->add);
 		if ($offset !== false)
 			array_splice($this->add, $offset, 1);
 
-		if (array_key_exists($id, $this->add_detached))
-			unset($this->add_detached[$id]);
+		if (array_key_exists($oid, $this->add_detached))
+			unset($this->add_detached[$oid]);
 
-		$this->managed[$id] = $object;
+		$this->managed[$oid] = $object;
 
 		$result = false;
 		if (($this->flushmode & Sabre_DAV_S3_IEntityManager::FLUSH_IMMEDIATE) > 0)
 		{
 			if ($object->_beforeSave($this) !== false)
 			{
-				$this->setObjectProperty($object, 'persistence_lastmodified', time());
+				$this->setObjectProperty($object, 'entity_lastmodified', time());
 				$result = $this->save($object);
 				if ($result)
 					$object->markDirty(false);
@@ -328,7 +335,7 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 		else
 		{
 			$result = true;
-			array_push($this->add, $id);
+			array_push($this->add, $oid);
 		}
 
 		if ($object->_afterPersist($this) === false)
@@ -367,16 +374,16 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 		if ($object->_beforeRefresh($this) === false)
 			return false;
 
-		$id = $object->getID();
+		$oid = $object->getOID();
 		$class = get_class($object);
 
-		if (!isset($id))
+		if (!isset($oid))
 		{
-			$id = $this->generateID($class, $object->getKey());
-			$this->setObjectProperty($object, 'id', $id);
+			$oid = $this->generateOID($class, $object->getKey());
+			$this->setObjectProperty($object, 'oid', $oid);
 		}
 
-		$persistentobj = $this->load($id);
+		$persistentobj = $this->load($oid);
 		if (!$persistentobj || !($persistentobj instanceof Sabre_DAV_S3_IPersistable))
 			return false;
 		$persistentobj->markDirty(false);
@@ -421,7 +428,7 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 		if (!$this->modernize($object))
 			return false;
 
-		$offset = array_search($object->getID(), $this->add);
+		$offset = array_search($object->getOID(), $this->add);
 		if ($offset !== false)
 			array_splice($this->add, $offset, 1);
 
@@ -443,15 +450,15 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 		if ($object->_beforeDetach($this) === false)
 			return false;
 
-		$id = $object->getID();
+		$oid = $object->getOID();
 
-		if (in_array($id, $this->add))
+		if (in_array($oid, $this->add))
 		{
 			$newobject = clone $object;
-			$this->add_detached[$id] = $newobject;
+			$this->add_detached[$oid] = $newobject;
 		}
 
-		unset($this->managed[$id]);
+		unset($this->managed[$oid]);
 
 		if ($object->_afterDetach($this) === false)
 			return false;
@@ -474,22 +481,22 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 		if ($object->_beforeRemove($this) === false)
 			return false;
 
-		$id = $object->getID();
+		$oid = $object->getOID();
 		$class = get_class($object);
 
-		$offset = array_search($id, $this->remove);
+		$offset = array_search($oid, $this->remove);
 		if ($offset !== false)
 			array_splice($this->remove, $offset, 1);
 
-		$offset = array_search($id, $this->add);
+		$offset = array_search($oid, $this->add);
 		if ($offset !== false)
 			array_splice($this->add, $offset, 1);
 
 		$result = true;
 		if (($this->flushmode & Sabre_DAV_S3_IEntityManager::FLUSH_IMMEDIATE) > 0)
-			$result = $this->delete($id);
+			$result = $this->delete($oid);
 		else
-			array_push($this->remove, $id);
+			array_push($this->remove, $oid);
 
 		if ($object->_afterRemove($this) === false)
 			return false;
@@ -509,9 +516,9 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 
 		$result = true;
 
-		foreach ($this->remove as $id)
+		foreach ($this->remove as $oid)
 		{
-			$result = $result & $this->delete($id);
+			$result = $result & $this->delete($oid);
 		}
 		$this->remove = array();
 
@@ -519,7 +526,7 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 		{
 			if ($object->_beforeSave($this) !== false)
 			{
-				$this->setObjectProperty($object, 'persistence_lastmodified', time());
+				$this->setObjectProperty($object, 'entity_lastmodified', time());
 				$r = $this->save($object);
 				if ($r)
 					$object->markDirty(false);
@@ -531,11 +538,11 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 
 		foreach ($this->managed as $object)
 		{
-			if (in_array($object->getID(), $this->add) || $object->isDirty())
+			if (in_array($object->getOID(), $this->add) || $object->isDirty())
 			{
 				if ($object->_beforeSave($this) !== false)
 				{
-					$this->setObjectProperty($object, 'persistence_lastmodified', time());
+					$this->setObjectProperty($object, 'entity_lastmodified', time());
 					$r = $this->save($object);
 					if ($r)
 						$object->markDirty(false);
@@ -565,9 +572,9 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 			if (!empty($class) && get_class($object) !== $class)
 				continue;
 
-			$mtime = $this->getObjectProperty($object, 'persistence_lastmodified');
+			$mtime = $this->getObjectProperty($object, 'entity_lastmodified');
 			if (!isset($mtime))
-				$mtime = $this->getObjectProperty('persistence_created');
+				$mtime = $this->getObjectProperty('entity_created');
 
 			if (isset($mtime) && $mtime < $before)
 				$this->remove($object);

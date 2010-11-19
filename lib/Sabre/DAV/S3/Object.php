@@ -169,7 +169,7 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 		$this->object = $newObject;
 
 		$this->name = $name;
-		$this->id = null;
+		$this->oid = null;
 
 		$this->markDirty();
 		$this->persist();

@@ -37,12 +37,12 @@ interface Sabre_DAV_S3_IPersistable
 	public static function getInstanceByKey($class, $key);
 
 	/**
-	 * Returns the Object's unique persistence ID
+	 * Returns the unique Object ID
 	 * In the form of "Class:id"
 	 *
 	 * @return string
 	 */
-	public function getID();
+	public function getOID();
 
 	/**
 	 * Returns the Object's Key. Associative array with key and value.
