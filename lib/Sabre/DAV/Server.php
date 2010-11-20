@@ -226,7 +226,6 @@ class Sabre_DAV_Server {
             }
             $headers['Content-Type'] = 'application/xml; charset=utf-8';
             
-            header_remove();
             $this->httpResponse->sendStatus($httpCode);
             $this->httpResponse->setHeaders($headers);
             $this->httpResponse->sendBody($DOM->saveXML());
