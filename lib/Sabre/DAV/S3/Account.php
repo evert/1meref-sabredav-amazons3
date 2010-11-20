@@ -225,10 +225,7 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 				{
 					$lastmodified = null;
 					if (isset($bucket->CreationDate))
-					{
-						$dt = new DateTime((string)$bucket->CreationDate);
-						$lastmodified = $dt->getTimestamp();
-					}
+						$lastmodified = strtotime((string)$bucket->CreationDate);
 
 					$node = Sabre_DAV_S3_Bucket::getInstanceByKey(array('bucket' => (string)$bucket->Name), (string)$bucket->Name, $this);
 					$node->setLastModified($lastmodified);

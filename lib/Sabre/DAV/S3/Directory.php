@@ -200,10 +200,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 				{
 					$lastmodified = null;
 					if (isset($object->LastModified))
-					{
-						$dt = new DateTime((string)$object->LastModified);
-						$lastmodified = $dt->getTimestamp();
-					}
+						$lastmodified = strtotime((string)$object->LastModified);
 
 					$size = null;
 					if (isset($object->Size))
