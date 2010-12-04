@@ -207,7 +207,7 @@ class RequestCore
 
 
 	/*%******************************************************************************************%*/
-	// CONSTRUCTOR
+	// CONSTRUCTOR / DESTRUCTOR
 
 	/**
 	 * Method: __construct()
@@ -247,6 +247,31 @@ class RequestCore
 		if ($proxy)
 		{
 			$this->set_proxy($proxy);
+		}
+
+		return $this;
+	}
+
+	/**
+	 * Method: __destruct()
+	 * 	The destructor. Closes opened file handles.
+	 *
+	 * Access:
+	 * 	public
+	 *
+	 * Returns:
+	 * 	`$this`
+	 */
+	public function __destruct()
+	{
+		if (isset($this->read_file) && isset($this->read_stream))
+		{
+			fclose($this->read_stream);
+		}
+
+		if (isset($this->write_file) && isset($this->write_stream))
+		{
+			fclose($this->write_stream);
 		}
 
 		return $this;
@@ -493,7 +518,6 @@ class RequestCore
 	public function set_read_file($location)
 	{
 		$this->read_file = $location;
-		// @todo: Close this connection!
 		$read_file_handle = fopen($location, 'r');
 
 		return $this->set_read_stream($read_file_handle);
@@ -534,7 +558,6 @@ class RequestCore
 	public function set_write_file($location)
 	{
 		$this->write_file = $location;
-		// @todo: Close this connection!
 		$write_file_handle = fopen($location, 'w');
 
 		return $this->set_write_stream($write_file_handle);
@@ -615,10 +638,10 @@ class RequestCore
 		// If we're not in the middle of an upload...
 		if ((integer) $info['size_upload'] === 0 && $this->seek_position >= 0)
 		{
-			fseek($file_handle, (integer) $this->seek_position);
+			fseek($this->read_stream, (integer) $this->seek_position);
 		}
 
-		return fread($file_handle, min($info['upload_content_length'] - $info['size_upload'], $length)); // Remaining upload data or cURL's requested chunk size
+		return fread($this->read_stream, min($info['upload_content_length'] - $info['size_upload'], $length)); // Remaining upload data or cURL's requested chunk size
 	}
 
 	/**
@@ -702,7 +725,6 @@ class RequestCore
 				curl_setopt($curl_handle, CURLOPT_CUSTOMREQUEST, 'PUT');
 				if (isset($this->read_stream))
 				{
-					curl_setopt($curl_handle, CURLOPT_INFILE, $this->read_stream);
 					curl_setopt($curl_handle, CURLOPT_INFILESIZE, $this->read_stream_size);
 					curl_setopt($curl_handle, CURLOPT_UPLOAD, true);
 				}
