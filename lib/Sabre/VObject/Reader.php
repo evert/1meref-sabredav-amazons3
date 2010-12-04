@@ -36,6 +36,9 @@ class Sabre_VObject_Reader {
         $lines2 = array();
         foreach($lines as $line) {
 
+            // Skipping empty lines
+            if (!$line) continue;
+
             if ($line[0]===" " || $line[0]==="\t") {
                 $lines2[count($lines2)-1].=substr($line,1);
             } else {
@@ -74,6 +77,7 @@ class Sabre_VObject_Reader {
             $obj = new Sabre_VObject_Component(strtoupper(substr($line,6)));
 
             $nextLine = current($lines);
+
             while(stripos($nextLine,"END:")!==0) {
 
                 $obj->children[] = self::readLine($lines);
@@ -88,6 +92,7 @@ class Sabre_VObject_Reader {
             if (substr($nextLine,4)!==$obj->name) {
                 throw new Sabre_VObject_ParseException('Invalid VObject, expected: "END:' . $obj->name . '" got: "' . $nextLine . '"');
             }
+            next($lines);
 
             return $obj;
 
@@ -107,7 +112,7 @@ class Sabre_VObject_Reader {
             throw new Sabre_VObject_ParseException('Invalid VObject, line ' . ($lineNr+1) . ' did not follow icalendar format');
         }
 
-        $obj = new Sabre_VObject_Property(strtoupper($matches['name']), $matches['value']);
+        $obj = new Sabre_VObject_Property(strtoupper($matches['name']), stripcslashes($matches['value']));
 
         if ($matches['parameters']) {
 
@@ -144,7 +149,7 @@ class Sabre_VObject_Reader {
             // Stripping quotes, if needed
             if ($value[0] === '"') $value = substr($value,1,strlen($value)-2);
 
-            $params[] = new Sabre_VObject_Parameter($match['paramName'], $value);
+            $params[] = new Sabre_VObject_Parameter($match['paramName'], stripcslashes($value));
 
         }
 

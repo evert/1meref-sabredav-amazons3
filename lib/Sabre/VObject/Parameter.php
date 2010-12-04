@@ -14,7 +14,7 @@
  * @author Evert Pot (http://www.rooftopsolutions.nl/) 
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
-class Sabre_VObject_Parameter extends Sabre_VObject_Element {
+class Sabre_VObject_Parameter extends Sabre_VObject_Node {
 
     /**
      * Parameter name 
@@ -42,6 +42,30 @@ class Sabre_VObject_Parameter extends Sabre_VObject_Element {
         $this->value = $value;
 
     } 
+
+    /**
+     * Turns the object back into a serialized blob. 
+     * 
+     * @return string 
+     */
+    public function serialize() {
+
+        $src = array(
+            '\\',
+            "\n",
+            ';',
+            ',',
+        );
+        $out = array(
+            '\\\\',
+            '\n',
+            '\;',
+            '\,',
+        );
+
+        return $this->name . '=' . str_replace($src, $out, $this->value);
+
+    }
 
     /**
      * Called when this object is being cast to a string 

@@ -16,7 +16,7 @@
  * @author Evert Pot (http://www.rooftopsolutions.nl/) 
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
-class Sabre_VObject_Property extends Sabre_VObject_Element implements ArrayAccess, Countable {
+class Sabre_VObject_Property extends Sabre_VObject_Element {
 
     /**
      * Propertyname 
@@ -40,15 +40,61 @@ class Sabre_VObject_Property extends Sabre_VObject_Element implements ArrayAcces
     public $value;
 
     /**
-     * Creates a new property object 
+     * Creates a new property object
+     * 
+     * By default this object will iterate over its own children, but this can 
+     * be overridden with the iterator argument
      * 
      * @param string $name 
      * @param string $value
+     * @param Sabre_VObject_ElementList $iterator
      */
-    public function __construct($name, $value = null) {
+    public function __construct($name, $value = null, $iterator = null) {
 
         $this->name = strtoupper($name);
         $this->value = $value;
+        if (!is_null($iterator)) $this->iterator = $iterator;
+
+    }
+
+    /**
+     * Turns the object back into a serialized blob. 
+     * 
+     * @return string 
+     */
+    public function serialize() {
+
+        $str = $this->name;
+        if (count($this->parameters)) {
+            foreach($this->parameters as $param) {
+                
+                $str.=';' . $param->serialize();
+
+            }
+        }
+        $src = array(
+            '\\',
+            "\n",
+        );
+        $out = array(
+            '\\\\',
+            '\n',
+        );
+        $str.=':' . str_replace($src, $out, $this->value);
+
+        $out = '';
+        while(strlen($str)>0) {
+            if (strlen($str)>75) {
+                $out.= substr($str,0,75) . "\r\n";
+                $str = ' ' . substr($str,75);
+            } else {
+                $out.=$str . "\r\n";
+                $str='';
+                break;
+            }
+        }
+
+        return $out;
 
     }
 
@@ -61,6 +107,8 @@ class Sabre_VObject_Property extends Sabre_VObject_Element implements ArrayAcces
      * @return bool 
      */
     public function offsetExists($name) {
+
+        if (is_int($name)) return parent::offsetExists($name);
 
         $name = strtoupper($name);
 
@@ -79,6 +127,7 @@ class Sabre_VObject_Property extends Sabre_VObject_Element implements ArrayAcces
      */
     public function offsetGet($name) {
 
+        if (is_int($name)) return parent::offsetGet($name);
         $name = strtoupper($name);
         
         $result = array();
@@ -106,6 +155,7 @@ class Sabre_VObject_Property extends Sabre_VObject_Element implements ArrayAcces
      */
     public function offsetSet($name, $value) {
 
+        if (is_int($name)) return parent::offsetSet($name, $value);
         if (is_scalar($value)) {
             if (!is_string($name)) 
                 throw new InvalidArgumentException('A parameter name must be specified. This means you cannot use the $array[]="string" to add parameters.');
@@ -130,6 +180,7 @@ class Sabre_VObject_Property extends Sabre_VObject_Element implements ArrayAcces
      */
     public function offsetUnset($name) {
 
+        if (is_int($name)) return parent::offsetUnset($name, $value);
         $name = strtoupper($name);
         
         $result = array();
@@ -139,21 +190,6 @@ class Sabre_VObject_Property extends Sabre_VObject_Element implements ArrayAcces
             }
 
         }
-
-    }
-
-    /* }}} */
-
-    /* {{{ Countable interface */
-
-    /**
-     * Returns the number of elements 
-     * 
-     * @return int 
-     */
-    public function count() {
-
-        return count($this->parameters);
 
     }
 
@@ -169,5 +205,6 @@ class Sabre_VObject_Property extends Sabre_VObject_Element implements ArrayAcces
         return $this->value;
 
     }
+
 
 }

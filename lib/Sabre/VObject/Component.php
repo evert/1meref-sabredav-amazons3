@@ -13,7 +13,7 @@
  * @author Evert Pot (http://www.rooftopsolutions.nl/) 
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
-class Sabre_VObject_Component extends Sabre_VObject_Element implements Iterator, Countable {
+class Sabre_VObject_Component extends Sabre_VObject_Element {
 
     /**
      * Name, for example VEVENT 
@@ -29,104 +29,90 @@ class Sabre_VObject_Component extends Sabre_VObject_Element implements Iterator,
      */
     public $children = array();
 
+
     /**
-     * Creates a new component 
+     * Creates a new component.
+     *
+     * By default this object will iterate over its own children, but this can 
+     * be overridden with the iterator argument
      * 
      * @param string $name 
+     * @param Sabre_VObject_ElementList $iterator
      */
-    public function __construct($name) {
+    public function __construct($name, Sabre_VObject_ElementList $iterator = null) {
 
         $this->name = strtoupper($name);
+        if (!is_null($iterator)) $this->iterator = $iterator;
 
     }
 
-    /* {{{ Iterator interface */
-
     /**
-     * Current position  
+     * Turns the object back into a serialized blob. 
      * 
-     * @var int 
+     * @return string 
      */
-    private $key = 0;
+    public function serialize() {
 
-    /**
-     * Returns current item in iteration 
-     * 
-     * @return Sabre_VObject_Element 
-     */
-    public function current() {
-
-        return $this->children[$this->key];
+        $str = "BEGIN:" . $this->name . "\r\n";
+        foreach($this->children as $child) $str.=$child->serialize();
+        $str.= "END:" . $this->name . "\r\n";
+        
+        return $str;
 
     }
-   
+
     /**
-     * To the next item in the iterator 
+     * Adds a new componenten or element
+     *
+     * You can call this method with the following syntaxes:
+     *
+     * add(Sabre_VObject_Element $element)
+     * add(string $name, $value)
+     *
+     * The first version adds an Element
+     * The second adds a property as a string. 
      * 
+     * @param mixed $item 
+     * @param mixed $itemValue 
      * @return void
      */
-    public function next() {
+    public function add($item, $itemValue = null) {
 
-        $this->key++;
+        if ($item instanceof Sabre_VObject_Element) {
+            if (!is_null($itemValue)) {
+                throw new InvalidArgumentException('The second argument must not be specified, when passing a VObject');
+            }
+            $this->children[] = $item;
+        } elseif(is_string($item)) {
 
-    }
+            if (!is_scalar($itemValue)) {
+                throw new InvalidArgumentException('The second argument must be scalar');
+            }
+            $this->children[] = new Sabre_VObject_Property($item,$itemValue);
 
-    /**
-     * Returns the current iterator key 
-     * 
-     * @return int
-     */
-    public function key() {
+        } else {
+            
+            throw new InvalidArgumentException('The first argument must either be a Sabre_VObject_Element or a string');
 
-        return $this->key;
-
-    }
-
-    /**
-     * Returns true if the current position in the iterator is a valid one 
-     * 
-     * @return bool 
-     */
-    public function valid() {
-
-        return isset($this->children[$this->key]);
+        }
 
     }
 
     /**
-     * Rewinds the iterator 
+     * Returns an iterable list of children 
      * 
-     * @return void 
+     * @return Sabre_VObject_ElementList 
      */
-    public function rewind() {
+    public function children() {
 
-        $this->key = 0;
+        return new Sabre_VObject_ElementList($this->children);
 
     }
-
-    /* }}} */
-
-    /* {{{ Countable interface */
-
-    /**
-     * Returns the number of child elements 
-     * 
-     * @return int 
-     */
-    public function count() {
-
-        return count($this->children);
-
-    }
-
-    /* }}} */
 
     /* Magic property accessors {{{ */
 
     /**
      * Using 'get' you will either get a propery or component, 
-     * or: if there's multiple matches for a property/componentname an
-     * Sabre_VObject_ElementList.
      *
      * If there were no child-elements found with the specified name,
      * null is returned.
@@ -146,10 +132,10 @@ class Sabre_VObject_Component extends Sabre_VObject_Element implements Iterator,
 
         if (count($matches)===0) {
             return null;
-        } elseif (count($matches) === 1) {
-            return $matches[0];
         } else {
-            return new Sabre_VObject_ElementList($matches);
+            $firstMatch = $matches[0];
+            $firstMatch->setIterator(new Sabre_VObject_ElementList($matches));
+            return $firstMatch;
         }
 
     }
@@ -179,6 +165,9 @@ class Sabre_VObject_Component extends Sabre_VObject_Element implements Iterator,
      *
      * You can either pass a Sabre_VObject_Component, Sabre_VObject_Property
      * object, or a string to automatically create a Property.
+     *
+     * If the item already exists, it will be removed. If you want to add
+     * a new item with the same name, always use the add() method.
      * 
      * @param string $name
      * @param mixed $value
@@ -186,11 +175,29 @@ class Sabre_VObject_Component extends Sabre_VObject_Element implements Iterator,
      */
     public function __set($name, $value) {
 
-        if ($value instanceof Sabre_VObject_Component ||
-          $value instanceof Sabre_VObject_Property) {
-            $this->children[] = $value;
+        $name = strtoupper($name);
+        $arrayKey = null;
+        foreach($this->children as $key=>$child) {
+
+            if ($child->name == $name) {
+                $arrayKey = $key;
+                break;
+            }
+
+        }
+
+        if ($value instanceof Sabre_VObject_Component || $value instanceof Sabre_VObject_Property) {
+            if (!is_null($arrayKey)) {
+                $this->children[$arrayKey] = $value;
+            } else {
+                $this->children[] = $value;
+            }
         } elseif (is_scalar($value)) {
-            $this->children[] = new Sabre_VObject_Property($name,$value);
+            if (!is_null($arrayKey)) {
+                $this->children[$arrayKey] = new Sabre_VObject_Property($name,$value);
+            } else {
+                $this->children[] = new Sabre_VObject_Property($name,$value);
+            }
         } else {
             throw new InvalidArgumentException('You must pass a Sabre_VObject_Component, Sabre_VObject_Property or scalar type');
         }
@@ -198,5 +205,6 @@ class Sabre_VObject_Component extends Sabre_VObject_Element implements Iterator,
     }
 
     /* }}} */
+
 
 }

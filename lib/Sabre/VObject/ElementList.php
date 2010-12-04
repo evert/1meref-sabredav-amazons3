@@ -12,7 +12,7 @@
  * @author Evert Pot (http://www.rooftopsolutions.nl/) 
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
-class Sabre_VObject_ElementList extends Sabre_VObject_Element implements Iterator, Countable {
+class Sabre_VObject_ElementList implements Iterator, Countable, ArrayAccess {
 
     /**
      * Inner elements 
@@ -113,36 +113,60 @@ class Sabre_VObject_ElementList extends Sabre_VObject_Element implements Iterato
 
     /* }}} */
 
-    /* Magic property accessors {{{ */
+    /* {{{ ArrayAccess Interface */
 
+    
     /**
-     * We use 'get' to forward any requests for properties
-     * to the currently selected object in the iteration.
+     * Checks if an item exists through ArrayAccess.
      *
-     * @param string $name 
-     * @return void
+     * @param int $offset 
+     * @return bool 
      */
-    public function __get($name) {
+    public function offsetExists($offset) {
 
-        if (isset($this->elements[$this->key]->$name)) {
-            return $this->elements[$this->key]->$name;
-        }
-
-        return null;
+        return isset($this->elements[$offset]);
 
     }
 
     /**
-     * This method checks if a sub-element with the specified name exists. 
-     * 
-     * @param string $name 
-     * @return bool 
+     * Gets an item through ArrayAccess.
+     *
+     * @param int $offset 
+     * @return mixed 
      */
-    public function __isset($name) {
+    public function offsetGet($offset) {
 
-        return isset($this->elements[$this->key]->$name);
+        return $this->elements[$offset];
+
+    }
+
+    /**
+     * Sets an item through ArrayAccess.
+     *
+     * @param int $offset 
+     * @param mixed $value 
+     * @return void
+     */
+    public function offsetSet($offset,$value) {
+
+        throw new LogicException('You can not add new objects to an ElementList');
+
+    }
+
+    /**
+     * Sets an item through ArrayAccess.
+     *
+     * This method just forwards the request to the inner iterator
+     *
+     * @param int $offset 
+     * @return void
+     */
+    public function offsetUnset($offset) {
+
+        throw new LogicException('You can not remove objects from an ElementList');
 
     }
 
     /* }}} */
+
 }
