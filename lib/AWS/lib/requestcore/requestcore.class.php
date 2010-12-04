@@ -169,7 +169,7 @@ class RequestCore
 	 * Property: seek_position
 	 * 	Stores the intended starting seek position.
 	 */
-	public $seek_position = 0;
+	public $seek_position = -1;
 
 
 	/*%******************************************************************************************%*/
@@ -415,6 +415,26 @@ class RequestCore
 	}
 
 	/**
+	 * Method: set_read_stream_size()
+	 * 	Sets the length in bytes to read from the stream while streaming up.
+	 *
+	 * Access:
+	 * 	public
+	 *
+	 * Parameters:
+	 * 	$size - _integer_ (Required) The length in bytes to read from the stream.
+	 *
+	 * Returns:
+	 * 	`$this`
+	 */
+	public function set_read_stream_size($size)
+	{
+		$this->read_stream_size = $size;
+
+		return $this;
+	}
+
+	/**
 	 * Method: set_read_stream()
 	 * 	Sets the resource to read from while streaming up. Reads the stream from it's current position until
 	 * 	EOF or `$size` bytes have been read. If `$size` is not given it will be determined by fstat() and
@@ -453,9 +473,8 @@ class RequestCore
 		}
 
 		$this->read_stream = $resource;
-		$this->read_stream_size = $size;
 
-		return $this;
+		return $this->set_read_stream_size($size);
 	}
 
 	/**
@@ -515,6 +534,7 @@ class RequestCore
 	public function set_write_file($location)
 	{
 		$this->write_file = $location;
+		// @todo: Close this connection!
 		$write_file_handle = fopen($location, 'w');
 
 		return $this->set_write_stream($write_file_handle);
@@ -593,14 +613,12 @@ class RequestCore
 		}
 
 		// If we're not in the middle of an upload...
-		if ((integer) $info['size_upload'] === 0)
+		if ((integer) $info['size_upload'] === 0 && $this->seek_position >= 0)
 		{
 			fseek($file_handle, (integer) $this->seek_position);
 		}
 
-		// echo ftell($file_handle) . '/' . $info['size_upload'] . PHP_EOL;
-
-		return fread($file_handle, 16384); // 16KB chunks
+		return fread($file_handle, min($info['upload_content_length'] - $info['size_upload'], $length)); // Remaining upload data or cURL's requested chunk size
 	}
 
 	/**
