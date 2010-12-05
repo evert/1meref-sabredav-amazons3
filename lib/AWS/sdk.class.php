@@ -19,7 +19,7 @@
  * 	Core functionality and default settings shared across all SDK classes. All methods and properties in this class are inherited by the service-specific classes.
  *
  * Version:
- * 	2010.11.26
+ * 	2010.12.03
  *
  * License and Copyright:
  * 	See the included NOTICE.md file for more information.
@@ -117,9 +117,9 @@ function __aws_sdk_ua_callback()
 // INTERMEDIARY CONSTANTS
 
 define('CFRUNTIME_NAME', 'aws-sdk-php');
-define('CFRUNTIME_VERSION', 'Cloud');
-define('CFRUNTIME_BUILD', gmdate('YmdHis', filemtime(__FILE__))); // @todo: Hardcode for release.
-// define('CFRUNTIME_BUILD', '20101110062756');
+define('CFRUNTIME_VERSION', '1.2');
+// define('CFRUNTIME_BUILD', gmdate('YmdHis', filemtime(__FILE__))); // @todo: Hardcode for release.
+define('CFRUNTIME_BUILD', '20101203002835');
 define('CFRUNTIME_USERAGENT', CFRUNTIME_NAME . '/' . CFRUNTIME_VERSION . ' PHP/' . PHP_VERSION . ' ' . php_uname('s') . '/' . php_uname('r') . ' Arch/' . php_uname('m') . ' SAPI/' . php_sapi_name() . ' Integer/' . PHP_INT_MAX . ' Build/' . CFRUNTIME_BUILD . __aws_sdk_ua_callback());
 
 
