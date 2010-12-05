@@ -22,7 +22,7 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 	 *
 	 * @var bool
 	 */
-	protected $shutdownfunction_enabled = true;
+	protected $shutdownfunction_enabled = false;
 
 	/**
 	 * Initializes the plugin
@@ -33,7 +33,7 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 	public function initialize(Sabre_DAV_Server $server)
 	{
 		$this->server = $server;
-		$this->server->subscribeEvent('unknownMethod', array($this, 'httpUpdateHandler'), 1);
+		$this->server->subscribeEvent('beforeMethod', array($this, 'httpUpdate'), 0);
 		register_shutdown_function(array($this, 'refreshPersistenceContext'));
 	}
 
@@ -44,12 +44,14 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 	 * @param string $uri
 	 * @return bool
 	 */
-	public function httpUpdateHandler($method, $uri)
+	public function httpUpdate($method, $uri)
 	{
 		if ($method !== 'UPDATE')
+		{
+			$this->shutdownfunction_enabled = true;
 			return true;
+		}
 
-		$this->shutdownfunction_enabled = false;
 		ignore_user_abort(true);
 		ob_end_clean();
 
