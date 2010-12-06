@@ -117,7 +117,8 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 			foreach ($this->children as $child)
 				array_push($this->children_oid, $child->getOID());
 
-			if ($this->children_oid !== $oldchildren)
+			$children_oid = $this->children_oid;
+			if (sort($children_oid) !== sort($oldchildren))
 				$this->markDirty();
 		}
 		else
@@ -238,6 +239,7 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 			foreach ($this->children as $bucket)
 				$bucket->requestChildren(true);
 
+		$this->setLastUpdated();
 		$this->children_requested = true;
 	}
 

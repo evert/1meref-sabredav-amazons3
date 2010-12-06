@@ -25,7 +25,24 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 	protected $shutdownfunction_enabled = false;
 
 	/**
-	 * Initializes the plugin
+	 * The lifetime in seconds of an entity before it is updated again
+	 *
+	 * @var int
+	 */
+	protected $lifetime = 0;
+
+	/**
+	 * Creates the Plugin
+	 *
+	 * @param int $lifetime The minimum time in seconds passed needed from the last modification time for an entity until it is updated.
+	 */
+	public function __construct($lifetime = 0)
+	{
+		$this->lifetime = $lifetime;
+	}
+
+	/**
+	 * Initializes the Plugin
 	 *
 	 * @param Sabre_DAV_Server $server
 	 * @return void
@@ -69,8 +86,12 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 			header('Connection: close', true, 204);
 		header('Content-Type: text/plain', true);
 
+		echo '------------------------------------------------------------------------------' . PHP_EOL;
+		echo $_SERVER['REQUEST_METHOD'] . ' ' . gmdate('D, d M Y H:i:s T') . PHP_EOL;
+		echo $_SERVER['HTTP_HOST'] . ' ' . $_SERVER['REQUEST_URI'] . PHP_EOL;
+		echo '------------------------------------------------------------------------------' . PHP_EOL;
 		flush();
-		//set_time_limit(0);
+
 
 		if (!($this->server->tree instanceof Sabre_DAV_S3_Tree))
 		{
@@ -87,15 +108,18 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 			return false;
 		}
 
-		echo 'waiting...' . PHP_EOL;
+		$em->setFlushMode(Sabre_DAV_S3_IEntityManager::FLUSH_MANUAL);
+
+		echo 'waiting (250ms)...' . PHP_EOL;
 		flush();
 
+		set_time_limit(0);
 		usleep(250000); //give a fighting chance to S3 to propagte (250ms)
 
 
 		$body = $this->server->httpRequest->getBody(true);
 
-		echo 'updating: ' . PHP_EOL . $body;
+		echo 'requested updates: ' . PHP_EOL . $body;
 		flush();
 
 		$oid = strtok($body, "\r\n");
@@ -103,96 +127,117 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 		{
 			if ($oid !== '')
 			{
-				echo PHP_EOL . 'searching: ' . $oid . PHP_EOL;
+				$forceupdate = false;
+				if (strpos($oid, '!') === 0)
+				{
+					$oid = substr($oid, 1);
+					$forceupdate = true;
+				}
+
+				echo PHP_EOL . 'searching for: ' . $oid . '... ';
 				flush();
 
 				$node = $em->find($oid);
 				if ($node)
 				{
-					try
+					echo 'found!' . PHP_EOL;
+					flush();
+
+					$lastmodified = $node->getLastUpdated();
+					if ($forceupdate || $lastmodified + $this->lifetime <= time() || !isset($lastmodified))
 					{
-						echo 'requesting meta data...' . PHP_EOL;
-						flush();
-
-						if ($node instanceof Sabre_DAV_S3_Bucket)
+						try
 						{
-							$metafile = $node->getMetaFile();
-							if ($metafile)
+							if ($forceupdate)
 							{
-								echo 'requesting bucket meta file (".")...' . PHP_EOL;
+								echo 'forcing update!' . PHP_EOL;
 								flush();
-
-								$metafile->requestMetaData(true);
 							}
-						}
-						$node->requestMetaData(true);
 
-						if ($node instanceof Sabre_DAV_S3_ICollection)
-						{
-							$refobj = new ReflectionObject($node);
-							if ($refobj->hasProperty('children_id'))
-							{
-								$dirtystate = $node->isDirty();
-
-								$refprop = $refobj->getProperty('children_id');
-								$refprop->setAccessible(true);
-
-								$children_old = $refprop->getValue($node);
-								$refprop->setValue($node, array());
-
-								echo 'requesting children...' . PHP_EOL;
-								flush();
-
-								$node->requestChildren();
-
-								$children_new = $refprop->getValue($node);
-								$children_removed = array_diff($children_old, $children_new);
-								$children_added = array_diff($children_new, $children_old);
-
-								foreach ($children_removed as $id_removed)
-								{
-									$child = $em->find($id_removed);
-									if ($child)
-									{
-										echo 'removing child: ' . $id_removed . PHP_EOL;
-										flush();
-
-										$child->remove();
-									}
-								}
-								foreach ($children_added as $id_added)
-								{
-									echo 'adding child: ' . $id_added . PHP_EOL;
-									flush();
-								}
-
-								$refprop->setValue($node, $children_new);
-								$node->markDirty(!empty($children_removed) || !empty($children_added) || $dirtystate);
-							}
-						}
-					}
-					catch (Sabre_DAV_S3_Exception $e)
-					{
-						echo 's3 error: ' . $e->getMessage() . PHP_EOL;
-						if ($e->getHTTPCode() == 404)
-						{
-							echo 'removing: ' . $node->getOID() . PHP_EOL;
+							echo 'requesting meta data...' . PHP_EOL;
 							flush();
-							$node->remove();
+
+							$node->requestMetaData(true);
+
+							if ($node instanceof Sabre_DAV_S3_ICollection)
+							{
+								$refobj = new ReflectionObject($node);
+								if ($refobj->hasProperty('children_id'))
+								{
+									$dirtystate = $node->isDirty();
+
+									$refprop = $refobj->getProperty('children_id');
+									$refprop->setAccessible(true);
+
+									$children_old = $refprop->getValue($node);
+									$refprop->setValue($node, array());
+
+									echo 'requesting children...' . PHP_EOL;
+									flush();
+
+									$node->requestChildren();
+
+									$children_new = $refprop->getValue($node);
+									$children_removed = array_diff($children_old, $children_new);
+									$children_added = array_diff($children_new, $children_old);
+
+									foreach ($children_removed as $id_removed)
+									{
+										$child = $em->find($id_removed);
+										if ($child)
+										{
+											echo 'removing child: ' . $id_removed . PHP_EOL;
+											flush();
+
+											$child->remove();
+										}
+									}
+									foreach ($children_added as $id_added)
+									{
+										echo 'adding child: ' . $id_added . PHP_EOL;
+										flush();
+									}
+
+									$refprop->setValue($node, $children_new);
+									$node->markDirty(!empty($children_removed) || !empty($children_added) || $dirtystate);
+								}
+							}
+							$node->setLastUpdated();
 						}
-						flush();
+						catch (Sabre_DAV_S3_Exception $e)
+						{
+							echo 's3 error: ' . $e->getMessage() . PHP_EOL;
+							if ($e->getHTTPCode() == 404)
+							{
+								echo 'removing: ' . $node->getOID() . PHP_EOL;
+								flush();
+								$node->remove();
+							}
+							flush();
+						}
+						catch (Exception $e)
+						{
+							echo 'error: ' . $e->getMessage() . PHP_EOL;
+							flush();
+						}
 					}
-					catch (Exception $e)
+					else
 					{
-						echo 'error: ' . $e->getMessage() . PHP_EOL;
+						echo 'skipping update! (' . $lastmodified . '/' . $this->lifetime . '/' . time() . ')' . PHP_EOL;
 						flush();
 					}
+				}
+				else
+				{
+					echo 'not found!' . PHP_EOL;
+					flush();
 				}
 			}
 			$oid = strtok("\r\n");
 		}
 
-		echo PHP_EOL . 'flushing persistence context...' . $id_removed . PHP_EOL . PHP_EOL;
+		echo PHP_EOL . 'flushing persistence context...' . PHP_EOL;
+		echo '------------------------------------------------------------------------------' . PHP_EOL . PHP_EOL;
 		flush();
 
 		$em->flush();

@@ -276,6 +276,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 			}
 		}
 
+		$this->setLastUpdated();
 		$this->children_requested = true;
 	}
 

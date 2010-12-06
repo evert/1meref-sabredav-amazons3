@@ -75,12 +75,20 @@ interface Sabre_DAV_S3_IPersistable
 	public function markDirty();
 
 	/**
+	 * Make the Object managed
+	 *
+	 * @param bool $overwrite
+	 * @return bool
+	 */
+	public function manage($overwrite = false);
+
+	/**
 	 * Make the Object persistent
 	 *
 	 * @param bool $overwrite
 	 * @return bool
 	 */
-	public function persist();
+	public function persist($overwrite = false);
 
 	/**
 	 * Refresh the Object from the persistent state, even if the object is not managed

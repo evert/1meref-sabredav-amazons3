@@ -138,9 +138,9 @@ class Sabre_DAV_S3_EntityManagerPDO extends Sabre_DAV_S3_EntityManager
 
 		if ($qry->rowCount() < 1)
 		{
-			$sql = 'INSERT INTO ' . $this->getTableName($oid) . ' (oid, object, created) VALUES (:oid, :object, NOW());';
+			$sql = 'INSERT INTO ' . $this->getTableName($oid) . ' (oid, object, created) VALUES (:oid, :object, FROM_UNIXTIME(:created));';
 			$qry = $this->pdo->prepare($sql);
-			if ($qry->execute(array(':oid' => $oid, ':object' => $data)) === false)
+			if ($qry->execute(array(':oid' => $oid, ':object' => $data, ':created' => $this->getObjectProperty($object, 'entity_created'))) === false)
 				throw new ErrorException("Entity Manager cannot access the database");
 			
 			if ($qry->rowCount() < 1)

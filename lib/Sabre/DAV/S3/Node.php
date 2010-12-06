@@ -12,6 +12,13 @@
 abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_INode
 {
 	/**
+	 * The timestamp when the Entity was last updated from S3
+	 *
+	 * @var int
+	 */
+	protected $entity_lastupdated = null;
+
+	/**
 	 * The node's name
 	 *
 	 * @var string
@@ -187,6 +194,7 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 		if (!isset($this->acl))
 			$this->setACL(AmazonS3::ACL_PRIVATE);
 
+		$this->setLastUpdated();
 		$this->metadata_requested = true;
 	}
 
@@ -300,7 +308,7 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 	 */
 	public function getPersistentProperties()
 	{
-		return array_merge(parent::getPersistentProperties(), array(__CLASS__ => array('name', 'parent_oid', 'metadata_requested', 'lastmodified', 'storageclass', 'owner', 'acl')));
+		return array_merge(parent::getPersistentProperties(), array(__CLASS__ => array('entity_lastupdated', 'name', 'parent_oid', 'metadata_requested', 'lastmodified', 'storageclass', 'owner', 'acl')));
 	}
 
 	/**
@@ -318,6 +326,34 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 		}
 
 		return true;
+	}
+
+	/**
+	 * Returns the Entity's last update time
+	 *
+	 * @return int Unix timestamp
+	 */
+	public function getLastUpdated()
+	{
+		return $this->entity_lastupdated;
+	}
+
+	/**
+	 * Sets the Entity's last update time
+	 *
+	 * @param int $lastupdated Unix timestamp
+	 * @return void
+	 */
+	public function setLastUpdated($lastupdated = null)
+	{
+		if (!isset($lastupdated))
+			$lastupdated = time();
+
+		if ($this->entity_lastupdated !== $lastupdated)
+		{
+			$this->entity_lastupdated = $lastupdated;
+			$this->markDirty();
+		}
 	}
 
 	/**

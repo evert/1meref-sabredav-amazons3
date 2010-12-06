@@ -27,6 +27,13 @@ interface Sabre_DAV_S3_IEntityManager
 	const ORM_CONCRETE_CLASS = 2;
 
 	/**
+	 * In this flush mode managed entities are saved or removed only by invoking the flush() method
+	 *
+	 * @var int
+	 */
+	const FLUSH_MANUAL = 0;
+
+	/**
 	 * In this flush mode Entities are only saved or removed when the Entity Manager unloads (__destruct)
 	 *
 	 * @var int
@@ -38,7 +45,7 @@ interface Sabre_DAV_S3_IEntityManager
 	 *
 	 * @var int
 	 */
-	const FLUSH_IMMEDIATE = 2;
+	const FLUSH_IMMEDIATE = 3;
 
 	/**
 	 * Gets the current flush mode
@@ -96,6 +103,16 @@ interface Sabre_DAV_S3_IEntityManager
 	public function findByKey($class, $key);
 
 	/**
+	 * Makes an Entity managed
+	 * If the Entity has no oid the the Entity is made persistent
+	 *
+	 * @param Sabre_DAV_S3_IPersistable $object
+	 * @param bool $overwrite
+	 * @return bool
+	 */
+	public function manage(Sabre_DAV_S3_IPersistable $object, $overwrite = false);
+
+	/**
 	 * Makes an Entity persistent
 	 * Assigns a new Object ID if new
 	 *
@@ -109,7 +126,7 @@ interface Sabre_DAV_S3_IEntityManager
 	 * Make a copy (clone) of the Entity persistent
 	 *
 	 * @param Sabre_DAV_S3_IPersistable $object
-	 * @return bool
+	 * @return Sabre_DAV_S3_IPersistable|bool
 	 */
 	public function merge(Sabre_DAV_S3_IPersistable $object);
 
@@ -168,4 +185,20 @@ interface Sabre_DAV_S3_IEntityManager
 	 * @return Sabre_DAV_S3_IPersistable[]
 	 */
 	public function getManaged();
+
+	/**
+	 * Get the creation time of an Entity
+	 *
+	 * @param Sabre_DAV_S3_IPersistable $object
+	 * @return mixed
+	 */
+	public function getCreationTime(Sabre_DAV_S3_IPersistable $object);
+
+	/**
+	 * Get the last persistent modification time of an Entity
+	 *
+	 * @param Sabre_DAV_S3_IPersistable $object
+	 * @return mixed
+	 */
+	public function getLastModified(Sabre_DAV_S3_IPersistable $object);
 }

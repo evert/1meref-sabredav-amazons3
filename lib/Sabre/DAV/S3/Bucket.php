@@ -176,8 +176,14 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 		$metafile = $this->getMetaFile();
 
 		if (isset($metafile))
-			$this->setStorageClass($metafile->getStorageClass());
+		{
+			if ($force)
+				$metafile->requestMetaData(true);
 
+			$this->setStorageClass($metafile->getStorageClass());
+		}
+
+		$this->setLastUpdated();
 		$this->metadata_requested = true;
 	}
 

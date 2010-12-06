@@ -15,7 +15,7 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	 *
 	 * @var Sabre_DAV_S3_IEntityManager
 	 */
-	private static $entitymanager = null;
+	private static $entity_manager = null;
 
 	/**
 	 * The node's Object ID
@@ -43,7 +43,7 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	 *
 	 * @var bool
 	 */
-	protected $dirty = true;
+	protected $entity_dirty = true;
 
 	/**
 	 * Returns the Entity Manager
@@ -52,7 +52,7 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	 */
 	public static final function getEntityManager()
 	{
-		return self::$entitymanager;
+		return self::$entity_manager;
 	}
 
 	/**
@@ -63,8 +63,8 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	 */
 	public static final function setEntityManager(Sabre_DAV_S3_IEntityManager $entitymanager = null)
 	{
-		if (isset($entitymanager) && !isset(self::$entitymanager))
-			self::$entitymanager = $entitymanager;
+		if (isset($entitymanager) && !isset(self::$entity_manager))
+			self::$entity_manager = $entitymanager;
 	}
 
 	/**
@@ -166,7 +166,7 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	 */
 	public final function isDirty()
 	{
-		return $this->dirty;
+		return $this->entity_dirty;
 	}
 
 	/**
@@ -176,7 +176,21 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	 */
 	public final function markDirty($dirty = true)
 	{
-		$this->dirty = !isset($dirty) ? true : (bool)$dirty;
+		$this->entity_dirty = !isset($dirty) ? true : (bool)$dirty;
+	}
+
+	/**
+	 * Make the Object managed
+	 *
+	 * @param bool $overwrite
+	 * @return bool
+	 */
+	public final function manage($overwrite = false)
+	{
+		if (!$this->getEntityManager())
+			return false;
+
+		return $this->getEntityManager()->manage($this, $overwrite);
 	}
 
 	/**
