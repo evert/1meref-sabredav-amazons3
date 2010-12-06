@@ -58,7 +58,7 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 				$rootnode->setEntityManager($this->entitymanager);
 
 			$rootnode->modernize();
-			$rootnode->persist(true);
+			$rootnode->manage(true);
 		}
 	}
 

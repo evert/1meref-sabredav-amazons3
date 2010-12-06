@@ -107,6 +107,7 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 		if (!empty($data['ACL']))
 			$this->setACL($data['ACL']);
 
+		$this->setLastUpdated();
 		$this->metadata_requested = true;
 	}
 

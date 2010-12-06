@@ -50,6 +50,21 @@ interface Sabre_DAV_S3_INode extends Sabre_DAV_INode, Sabre_DAV_S3_IPersistable
 	public static function setDefaultS3(AmazonS3 $s3 = null);
 
 	/**
+	 * Returns the Entity's last update time
+	 *
+	 * @return int Unix timestamp
+	 */
+	public function getLastUpdated();
+
+	/**
+	 * Sets the Entity's last update time
+	 *
+	 * @param int $lastupdated Unix timestamp
+	 * @return void
+	 */
+	public function setLastUpdated($lastupdated = null);
+
+	/**
 	 * Sets the node's last modification time
 	 *
 	 * @param int $lastmodified Unix timestamp

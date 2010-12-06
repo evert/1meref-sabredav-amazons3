@@ -109,10 +109,15 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 	protected function getObjectProperty(Sabre_DAV_S3_IPersistable $object, $name)
 	{
 		$refobj = new ReflectionObject($object);
-		$refprop = $refobj->getProperty($name);
-		$refprop->setAccessible(true);
+		if ($refobj->hasProperty($name))
+		{
+			$refprop = $refobj->getProperty($name);
+			$refprop->setAccessible(true);
 
-		return $refprop->getValue($object);
+			return $refprop->getValue($object);
+		}
+		else
+			return null;
 	}
 
 	/**
@@ -121,15 +126,21 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 	 * @param Sabre_DAV_S3_IPersistable $object
 	 * @param string $name
 	 * @param mixed $value
-	 * @return void
+	 * @return bool
 	 */
 	protected function setObjectProperty(Sabre_DAV_S3_IPersistable $object, $name, $value)
 	{
 		$refobj = new ReflectionObject($object);
-		$refprop = $refobj->getProperty($name);
-		$refprop->setAccessible(true);
+		if ($refobj->hasProperty($name))
+		{
+			$refprop = $refobj->getProperty($name);
+			$refprop->setAccessible(true);
+			$refprop->setValue($object, $value);
 
-		$refprop->setValue($object, $value);
+			return true;
+		}
+		else
+			return false;
 	}
 
 	/**
@@ -172,12 +183,7 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 	 */
 	public function setFlushMode($flushmode)
 	{
-		if (isset($flushmode) && (((int)$flushmode & 3) > 0))
-		{
-			$this->$flushmode = (int)$flushmode;
-			//if (($this->flushmode & Sabre_DAV_S3_IEntityManager::FLUSH_IMMEDIATE) > 0)
-		//	$this->flush();
-		}
+		$this->$flushmode = (int)$flushmode;
 	}
 
 	/**
@@ -205,7 +211,8 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 		if (!$this->isopen)
 			return;
 
-		$this->flush();
+		if (($this->flushmode & Sabre_DAV_S3_IEntityManager::FLUSH_UNLOAD) == Sabre_DAV_S3_IEntityManager::FLUSH_UNLOAD)
+			$this->flush();
 		$this->clear();
 		$this->isopen = false;
 	}
@@ -275,6 +282,33 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 	}
 
 	/**
+	 * Makes an Entity managed
+	 * If the Entity has no oid the the Entity is made persistent
+	 *
+	 * @param Sabre_DAV_S3_IPersistable $object
+	 * @param bool $overwrite
+	 */
+	public function manage(Sabre_DAV_S3_IPersistable $object, $overwrite = false)
+	{
+		if (!$this->isopen)
+			throw new ErrorException('Entity Manager is in an illegal state');
+		
+		$overwrite = isset($overwrite) ? (bool)$overwrite : false;
+
+		$oid = $object->getOID();
+
+		if (!isset($oid))
+			return $this->persist($object, $overwrite);
+
+		if (!$overwrite && array_key_exists($oid, $this->managed) && $this->managed[$oid] !== $object)
+			throw new ErrorException("Entity Manager already manages an object with that oid ($oid) in this context");
+
+		$this->managed[$oid] = $object;
+
+		return true;
+	}
+
+	/**
 	 * Makes an Entity persistent
 	 * Assigns a new persistence Object ID if new
 	 *
@@ -321,7 +355,7 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 		$this->managed[$oid] = $object;
 
 		$result = false;
-		if (($this->flushmode & Sabre_DAV_S3_IEntityManager::FLUSH_IMMEDIATE) > 0)
+		if (($this->flushmode & Sabre_DAV_S3_IEntityManager::FLUSH_IMMEDIATE) == Sabre_DAV_S3_IEntityManager::FLUSH_IMMEDIATE)
 		{
 			if ($object->_beforeSave($this) !== false)
 			{
@@ -334,8 +368,8 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 		}
 		else
 		{
-			$result = true;
 			array_push($this->add, $oid);
+			$result = true;
 		}
 
 		if ($object->_afterPersist($this) === false)
@@ -348,13 +382,13 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 	 * Make a copy (clone) of the Entity persistent
 	 *
 	 * @param Sabre_DAV_S3_IPersistable $object
-	 * @return bool
+	 * @return Sabre_DAV_S3_IPersistable|bool
 	 */
 	public function merge(Sabre_DAV_S3_IPersistable $object)
 	{
 		$newobject = clone $object;
 
-		if ($this->persist($newobject))
+		if ($this->persist($newobject, true))
 			return $newobject;
 		else
 			return false;
@@ -386,7 +420,9 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 		$persistentobj = $this->load($oid);
 		if (!$persistentobj || !($persistentobj instanceof Sabre_DAV_S3_IPersistable))
 			return false;
+
 		$persistentobj->markDirty(false);
+
 		if ($persistentobj->_afterLoad($this) === false)
 			return false;
 
@@ -493,7 +529,7 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 			array_splice($this->add, $offset, 1);
 
 		$result = true;
-		if (($this->flushmode & Sabre_DAV_S3_IEntityManager::FLUSH_IMMEDIATE) > 0)
+		if (($this->flushmode & Sabre_DAV_S3_IEntityManager::FLUSH_IMMEDIATE) == Sabre_DAV_S3_IEntityManager::FLUSH_IMMEDIATE)
 			$result = $this->delete($oid);
 		else
 			array_push($this->remove, $oid);
@@ -591,5 +627,33 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 	public function getManaged()
 	{
 		return $this->managed;
+	}
+
+	/**
+	 * Get the creation time of an Entity
+	 *
+	 * @param Sabre_DAV_S3_IPersistable $object
+	 * @return mixed
+	 */
+	public function getCreationTime(Sabre_DAV_S3_IPersistable $object)
+	{
+		if (!$this->isopen)
+			throw new ErrorException('Entity Manager is in an illegal state');
+
+		return $this->getObjectProperty($object, 'entity_created');
+	}
+
+	/**
+	 * Get the last persistent modification time of an Entity
+	 *
+	 * @param Sabre_DAV_S3_IPersistable $object
+	 * @return mixed
+	 */
+	public function getLastModified(Sabre_DAV_S3_IPersistable $object)
+	{
+		if (!$this->isopen)
+			throw new ErrorException('Entity Manager is in an illegal state');
+
+		return $this->getObjectProperty($object, 'entity_lastmodified');
 	}
 }
