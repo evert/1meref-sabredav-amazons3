@@ -54,6 +54,26 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 		register_shutdown_function(array($this, 'refreshPersistenceContext'));
 	}
 
+	private $uselogfile = false;
+
+	private function elog($s)
+	{
+		if ($this->uselogfile)
+		{
+			if (!isset($this->logfile))
+			{
+				echo 'acquireing exclusive lock for log file...' . PHP_EOL;
+				flush();
+				$this->logfile = fopen(__FILE__ . '.log', 'a');
+				flock($this->logfile, LOCK_EX);	// blocks until lock is acquired
+			}
+			fwrite($this->logfile, $s);
+		}
+
+		echo $s;
+		flush();
+	}
+
 	/**
 	 * This method handles UPDATE requests to update the persistent state of Entities
 	 *
@@ -71,6 +91,7 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 
 		ignore_user_abort(true);
 		ob_end_clean();
+		set_time_limit(0);
 
 		$remote_addr = $this->server->httpRequest->getRawServerValue('REMOTE_ADDR');
 		$server_addr = $this->server->httpRequest->getRawServerValue('SERVER_ADDR');
@@ -86,41 +107,33 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 			header('Connection: close', true, 204);
 		header('Content-Type: text/plain', true);
 
-		echo '------------------------------------------------------------------------------' . PHP_EOL;
-		echo $_SERVER['REQUEST_METHOD'] . ' ' . gmdate('D, d M Y H:i:s T') . PHP_EOL;
-		echo $_SERVER['HTTP_HOST'] . ' ' . $_SERVER['REQUEST_URI'] . PHP_EOL;
-		echo '------------------------------------------------------------------------------' . PHP_EOL;
-		flush();
+		usleep(250000); //give a fighting chance to S3 to propagte (250ms)
+
+		$ts = microtime(true);
+		$tsm = (integer)floor(($ts - floor($ts)) * 1000);
+		$this->elog('------------------------------------------------------------------------------' . PHP_EOL .
+			$_SERVER['REQUEST_METHOD'] . ' ' . gmdate('D, d M Y H:i:s.', floor($ts)) . $tsm . ' GMT' . PHP_EOL .
+			$_SERVER['HTTP_HOST'] . ' ' . $_SERVER['REQUEST_URI'] . PHP_EOL .
+			'------------------------------------------------------------------------------' . PHP_EOL);
 
 
 		if (!($this->server->tree instanceof Sabre_DAV_S3_Tree))
 		{
-			echo 'Tree is not a Sabre_DAV_S3_Tree!' . PHP_EOL;
+			$this->elog('Tree is not a Sabre_DAV_S3_Tree!' . PHP_EOL);
 			return false;
 		}
 
 		$em = $this->server->tree->getEntityManager();
 		$s3 = $this->server->tree->getS3();
-
 		if (!$em || !$s3)
 		{
-			echo 'No Entity Manager or S3 Service available!' . PHP_EOL;
+			$this->elog('No Entity Manager or S3 Service available!' . PHP_EOL);
 			return false;
 		}
-
 		$em->setFlushMode(Sabre_DAV_S3_IEntityManager::FLUSH_MANUAL);
 
-		echo 'waiting (250ms)...' . PHP_EOL;
-		flush();
-
-		set_time_limit(0);
-		usleep(250000); //give a fighting chance to S3 to propagte (250ms)
-
-
 		$body = $this->server->httpRequest->getBody(true);
-
-		echo 'requested updates: ' . PHP_EOL . $body;
-		flush();
+		$this->elog('requested updates: ' . PHP_EOL . $body);
 
 		$oid = strtok($body, "\r\n");
 		while ($oid !== false)
@@ -134,14 +147,12 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 					$forceupdate = true;
 				}
 
-				echo PHP_EOL . 'searching for: ' . $oid . '... ';
-				flush();
-
+				$this->elog(PHP_EOL . 'searching for: ' . $oid . '... ');
 				$node = $em->find($oid);
 				if ($node)
 				{
-					echo 'found!' . PHP_EOL;
-					flush();
+					$this->elog('found!' . PHP_EOL .
+						'name: "' . $node->getName() . '"' . PHP_EOL);
 
 					$lastmodified = $node->getLastUpdated();
 					if ($forceupdate || $lastmodified + $this->lifetime <= time() || !isset($lastmodified))
@@ -149,14 +160,11 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 						try
 						{
 							if ($forceupdate)
-							{
-								echo 'forcing update!' . PHP_EOL;
-								flush();
-							}
+								$this->elog('forcing update: ' . (time() - $lastmodified) . '/' . $this->lifetime . PHP_EOL);
+							else
+								$this->elog('age qualifies for update: ' . (time() - $lastmodified) . '/' . $this->lifetime . PHP_EOL);
 
-							echo 'requesting meta data...' . PHP_EOL;
-							flush();
-
+							$this->elog('requesting meta data...' . PHP_EOL);
 							$node->requestMetaData(true);
 
 							if ($node instanceof Sabre_DAV_S3_ICollection)
@@ -172,9 +180,7 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 									$children_old = $refprop->getValue($node);
 									$refprop->setValue($node, array());
 
-									echo 'requesting children...' . PHP_EOL;
-									flush();
-
+									$this->elog('requesting children...' . PHP_EOL);
 									$node->requestChildren();
 
 									$children_new = $refprop->getValue($node);
@@ -186,16 +192,13 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 										$child = $em->find($id_removed);
 										if ($child)
 										{
-											echo 'removing child: ' . $id_removed . PHP_EOL;
-											flush();
-
+											$this->elog('removing child: ' . $id_removed . PHP_EOL);
 											$child->remove();
 										}
 									}
 									foreach ($children_added as $id_added)
 									{
-										echo 'adding child: ' . $id_added . PHP_EOL;
-										flush();
+										$this->elog('adding child: ' . $id_added . PHP_EOL);
 									}
 
 									$refprop->setValue($node, $children_new);
@@ -206,41 +209,40 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 						}
 						catch (Sabre_DAV_S3_Exception $e)
 						{
-							echo 's3 error: ' . $e->getMessage() . PHP_EOL;
+							$this->elog('s3 error: ' . $e->getMessage() . PHP_EOL);
 							if ($e->getHTTPCode() == 404)
 							{
-								echo 'removing: ' . $node->getOID() . PHP_EOL;
-								flush();
+								$this->elog('removing: ' . $node->getOID() . PHP_EOL);
 								$node->remove();
+								$parent = $node->getParent();
+								if (isset($parent))
+								{
+									$this->elog('removing from parent: ' . $parent->getOID() . PHP_EOL);
+									$parent->removeChild($node->getName());
+								}
 							}
-							flush();
 						}
 						catch (Exception $e)
 						{
-							echo 'error: ' . $e->getMessage() . PHP_EOL;
-							flush();
+							$this->elog('error: ' . $e->getMessage() . PHP_EOL);
 						}
 					}
 					else
-					{
-						echo 'skipping update! (' . $lastmodified . '/' . $this->lifetime . '/' . time() . ')' . PHP_EOL;
-						flush();
-					}
+						$this->elog('skipping update: ' . (time() - $lastmodified) . '/' . $this->lifetime . PHP_EOL);
 				}
 				else
 				{
-					echo 'not found!' . PHP_EOL;
-					flush();
+					$this->elog('not found!' . PHP_EOL);
 				}
 			}
 			$oid = strtok("\r\n");
 		}
 
-		echo PHP_EOL . 'flushing persistence context...' . PHP_EOL;
-		echo '------------------------------------------------------------------------------' . PHP_EOL . PHP_EOL;
-		flush();
-
+		$this->elog(PHP_EOL . 'flushing persistence context...' . PHP_EOL);
 		$em->flush();
+
+		$this->elog('execution time: ' . (microtime(true) - $ts) . PHP_EOL .
+			'------------------------------------------------------------------------------' . PHP_EOL . PHP_EOL);
 
 		return false;
 	}

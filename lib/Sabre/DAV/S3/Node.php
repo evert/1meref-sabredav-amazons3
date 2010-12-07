@@ -194,8 +194,8 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 		if (!isset($this->acl))
 			$this->setACL(AmazonS3::ACL_PRIVATE);
 
-		$this->setLastUpdated();
 		$this->metadata_requested = true;
+		$this->setLastUpdated();
 	}
 
 	/**
@@ -215,7 +215,7 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 	 */
 	public function getParent()
 	{
-		if (!isset($this->parent) && isset($this->parent_oid) && $this->getEntityManager())
+		if (!isset($this->parent) && $this->getEntityManager() && isset($this->parent_oid))
 		{
 			$node = $this->getEntityManager()->find($this->parent_oid);
 			if ($node)

@@ -126,7 +126,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 	 * @param int $size Stream size of $data
 	 * @param string $type MIME-Type (application/octet-stream by default)
 	 * @throws Sabre_DAV_Exception_BadRequest, Sabre_DAV_S3_Exception
-	 * @return void
+	 * @return Sabre_DAV_S3_File
 	 */
 	public function createFile($name, $data = null, $size = null, $type = null)
 	{
@@ -141,6 +141,8 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 		$node->put($data, $size, $type);
 
 		$this->addChild($node);
+
+		return $node;
 	}
 
 	/**
@@ -148,7 +150,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 	 *
 	 * @param string $name Name of the virtual folder within this virtual folder
 	 * @throws Sabre_DAV_S3_Exception
-	 * @return void
+	 * @return Sabre_DAV_S3_Directory
 	 */
 	public function createDirectory($name)
 	{
@@ -165,6 +167,8 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 		$node->setACL($this->getACL());
 
 		$this->addChild($node);
+
+		return $node;
 	}
 
 	/**
@@ -244,8 +248,12 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 							{
 								if (array_key_exists($subkey, $nodes))
 									$parent = $nodes[$subkey];
-								else
+								else	// virtual folder without folder object, so create one
 								{
+									/*$node = $this->getEntityManager()->findByKey(array('bucket' => $parent->getBucket(), 'object' => $this->getObject() . $subkey));
+									if ($node)
+										$node->remove();
+									$node = $parent->createDirectory($keypart);*/
 									$node = Sabre_DAV_S3_Directory::getInstanceByKey(array('bucket' => $parent->getBucket(), 'object' => $this->getObject() . $subkey), $this->getObject() . $subkey, $parent);
 									$parent->addChild($node);
 									$nodes[$subkey] = $node;
@@ -276,8 +284,9 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 			}
 		}
 
-		$this->setLastUpdated();
 		$this->children_requested = true;
+		if ($this->metadata_requested)
+			$this->setLastUpdated();
 	}
 
 	/**
@@ -288,7 +297,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 	 */
 	public function getChildren()
 	{
-		if (empty($this->children) && $this->getEntityManager() && isset($this->children_oid))
+		if (empty($this->children) && $this->getEntityManager() && !empty($this->children_oid))
 		{
 			$dirtystate = $this->isDirty();
 

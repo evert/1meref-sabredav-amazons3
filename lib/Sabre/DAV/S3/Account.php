@@ -239,8 +239,9 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 			foreach ($this->children as $bucket)
 				$bucket->requestChildren(true);
 
-		$this->setLastUpdated();
 		$this->children_requested = true;
+		if ($this->metadata_requested)
+			$this->setLastUpdated();
 	}
 
 	/**
