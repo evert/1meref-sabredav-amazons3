@@ -9,3 +9,4 @@ fileserver2.php
 calendarserver.php
 relre:^package.xml
 relre:^lib/AWS/.git
+glob:lib/Sabre/DAV/S3/Plugin.php.log

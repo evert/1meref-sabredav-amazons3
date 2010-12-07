@@ -117,9 +117,10 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 			if (!isset($this->storageclass))
 			{
 				if (isset($this->parent))
-					$this->setStorageClass($this->parent->getStorageClass());
+					$this->storageclass = $this->parent->getStorageClass();
 				if (!isset($this->storageclass))
-					$this->setStorageClass(AmazonS3::STORAGE_STANDARD);
+					$this->storageclass = AmazonS3::STORAGE_STANDARD;
+				$this->markDirty();
 			}
 
 			$this->createFile('.', fopen('php://memory', 'r'), 0, '');
@@ -183,8 +184,9 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 			$this->setStorageClass($metafile->getStorageClass());
 		}
 
-		$this->setLastUpdated();
 		$this->metadata_requested = true;
+		if ($this->children_requested)
+			$this->setLastUpdated();
 	}
 
 	/**
@@ -218,6 +220,28 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 		}
 		else
 			parent::addChild($node);
+	}
+
+	/**
+	 * Removes the child specified by it's name from the children collection
+	 *
+	 * @param string $name
+	 * @return void
+	 */
+	public function removeChild($name)
+	{
+		if ($name === '.')
+		{
+			$this->metafile = null;
+
+			if (isset($this->metafile_oid))
+			{
+				$this->metafile_oid = null;
+				$this->markDirty();
+			}
+		}
+		else
+			parent::removeChild($name);
 	}
 
 	/**

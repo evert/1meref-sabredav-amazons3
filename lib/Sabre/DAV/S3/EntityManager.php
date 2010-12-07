@@ -292,7 +292,7 @@ abstract class Sabre_DAV_S3_EntityManager implements Sabre_DAV_S3_IEntityManager
 	{
 		if (!$this->isopen)
 			throw new ErrorException('Entity Manager is in an illegal state');
-		
+
 		$overwrite = isset($overwrite) ? (bool)$overwrite : false;
 
 		$oid = $object->getOID();
