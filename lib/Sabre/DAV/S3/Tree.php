@@ -152,13 +152,13 @@ class Sabre_DAV_S3_Tree extends Sabre_DAV_ObjectTree
 			if (isset($grandparentNode))
 			{
 				$objectprefix = $grandparentNode instanceof Sabre_DAV_S3_Object ? $grandparentNode->getObject() : '';
-				$parentNode = Sabre_DAV_S3_Directory::getInstanceByKey(array('bucket' => $bucket, 'object' => $objectprefix . $parentName), $objectprefix . $parentName, $grandparentNode, $bucket);
+				$parentNode = Sabre_DAV_S3_Directory::getInstanceByKey(array('bucket' => $bucket, 'object' => $objectprefix . $parent . '/'), $objectprefix . $parent, $grandparentNode, $bucket);
 				$grandparentNode->addChild($parentNode);
 			}
 			else
 			{
 				$objectprefix = $this->rootNode instanceof Sabre_DAV_S3_Object ? $this->rootNode->getObject() : '';
-				$parentNode = Sabre_DAV_S3_Directory::getInstanceByKey(array('bucket' => $bucket, 'object' => $objectprefix . $parent), $objectprefix . $parent, null, $bucket);
+				$parentNode = Sabre_DAV_S3_Directory::getInstanceByKey(array('bucket' => $bucket, 'object' => $objectprefix . $parent . '/'), $objectprefix . $parent, null, $bucket);
 			}
 		}
 

@@ -111,20 +111,41 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 
 		if ($this->children_supplied)
 		{
-			$oldchildren = $this->children_oid;
+			$children_old = $this->children_oid;
+			sort($children_old);
 			$this->children_oid = array();
 
 			foreach ($this->children as $child)
 				array_push($this->children_oid, $child->getOID());
 
-			$children_oid = $this->children_oid;
-			if (sort($children_oid) !== sort($oldchildren))
-				$this->markDirty();
+			$children_new = $this->children_oid;
+			sort($children_new);
+			$this->markDirty($children_new !== $children_old);
 		}
 		else
 			$this->children = array();
 
 		return true;
+	}
+
+	/**
+	 * Retrieve the node's metadata from all possible sources
+	 * Use the specific getter method to read individual results (lastmodified, owner, acl, ...)
+	 *
+	 * @param bool $force
+	 * @return bool true if data was requested
+	 */
+	public function requestMetaData($force = false)
+	{
+		if (parent::requestMetaData($force))
+		{
+			if ($this->children_requested)
+				$this->setLastUpdated();
+
+			return true;
+		}
+		else
+			return false;
 	}
 
 	/**
@@ -202,7 +223,7 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 	 * Updates the Buckets collection from S3
 	 *
 	 * @param bool $fulltree If true, all subdirectories within buckets will also be parsed, buckets only otherwise
-	 * @return void
+	 * @return bool true if data was requested
 	 */
 	public function requestChildren($fulltree = false)
 	{
@@ -242,6 +263,8 @@ class Sabre_DAV_S3_Account extends Sabre_DAV_S3_Node implements Sabre_DAV_S3_ICo
 		$this->children_requested = true;
 		if ($this->metadata_requested)
 			$this->setLastUpdated();
+
+		return true;
 	}
 
 	/**

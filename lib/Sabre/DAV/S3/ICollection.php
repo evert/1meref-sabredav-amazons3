@@ -30,7 +30,7 @@ interface Sabre_DAV_S3_ICollection extends Sabre_DAV_S3_INode, Sabre_DAV_ICollec
 	 * Updates the children collection from S3
 	 *
 	 * @param bool $fulltree If true, all subdirectories will also be parsed, only the current path otherwise
-	 * @return void
+	 * @return bool true if data was requested
 	 */
 	public function requestChildren($fulltree = false);
 }

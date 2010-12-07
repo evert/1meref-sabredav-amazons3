@@ -48,6 +48,25 @@ class Sabre_DAV_S3_File extends Sabre_DAV_S3_Object implements Sabre_DAV_IFile, 
 	}
 
 	/**
+	 * Retrieve the node's metadata from all possible sources
+	 * Use the specific getter method to read individual results (lastmodified, owner, acl, ...)
+	 *
+	 * @param bool $force
+	 * @return bool true if data was requested
+	 */
+	public function requestMetaData($force = false)
+	{
+		if (parent::requestMetaData($force))
+		{
+			$this->setLastUpdated();
+
+			return true;
+		}
+		else
+			return false;
+	}
+
+	/**
 	 * Returns the data
 	 *
 	 * @param bool $streamout output stream directly for GET requests?

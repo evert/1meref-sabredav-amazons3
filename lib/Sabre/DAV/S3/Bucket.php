@@ -133,19 +133,20 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	}
 
 	/**
-	 * Retrieve the object's metadata from all possible sources (list, head, acl)
+	 * Retrieve the node's metadata from all possible sources
+	 * Use the specific getter method to read individual results (lastmodified, owner, acl, ...)
 	 *
 	 * @param bool $force
-	 * @return void
+	 * @return bool true if data was requested
 	 */
 	public function requestMetaData($force = false)
 	{
 		if (!$force && $this->metadata_requested)
-			return;
+			return false;
 
 		$response = $this->getS3()->get_bucket_acl($this->bucket);
 		if (!$response->isOK())
-			throw new Sabre_DAV_S3_Exception('S3 Bucket metadata retrieve failed');
+			throw new Sabre_DAV_S3_Exception('S3 Bucket metadata retrieve failed', $response);
 
 		if ($response->body)
 		{
@@ -187,6 +188,8 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 		$this->metadata_requested = true;
 		if ($this->children_requested)
 			$this->setLastUpdated();
+
+		return true;
 	}
 
 	/**

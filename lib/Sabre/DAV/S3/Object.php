@@ -59,7 +59,6 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 	public function __construct($object, Sabre_DAV_S3_ICollection $parent = null, $bucket = null)
 	{
 		$this->object = $object !== '' ? $object : null;
-		;
 
 		$name = null;
 		if (isset($this->object))
@@ -78,12 +77,12 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 	 * Use the specific getter method to read individual results (lastmodified, owner, acl, ...)
 	 *
 	 * @param bool $force
-	 * @return void
+	 * @return bool true if data was requested
 	 */
 	public function requestMetaData($force = false)
 	{
 		if (!$force && $this->metadata_requested)
-			return;
+			return false;
 
 		$data = $this->getS3()->get_object_metadata($this->bucket, $this->object);
 		if (!$data)
@@ -108,7 +107,9 @@ abstract class Sabre_DAV_S3_Object extends Sabre_DAV_S3_Node
 			$this->setACL($data['ACL']);
 
 		$this->metadata_requested = true;
-		$this->setLastUpdated();
+//		$this->setLastUpdated();
+
+		return true;
 	}
 
 	/**
