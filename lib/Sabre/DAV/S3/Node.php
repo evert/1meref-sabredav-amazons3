@@ -172,16 +172,16 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 	 * Retrieve the node's metadata
 	 *
 	 * @param bool $force
-	 * @return void
+	 * @return bool true if data was requested
 	 */
 	public function requestMetaData($force = false)
 	{
 		if (!$force && $this->metadata_requested)
-			return;
+			return false;
 
 		if (!isset($this->lastmodified))
 			$this->setLastModified(0);
-			/*		if (!isset($this->size))
+/*		if (!isset($this->size))
 			$this->setSize(0);
 		if (!isset($this->etag))
 			$this->setETag('');
@@ -195,7 +195,9 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 			$this->setACL(AmazonS3::ACL_PRIVATE);
 
 		$this->metadata_requested = true;
-		$this->setLastUpdated();
+//		$this->setLastUpdated();
+
+		return true;
 	}
 
 	/**

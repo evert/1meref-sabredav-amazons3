@@ -101,6 +101,41 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 	}
 
 	/**
+	 * Retrieve the node's metadata from all possible sources
+	 * Use the specific getter method to read individual results (lastmodified, owner, acl, ...)
+	 *
+	 * @param bool $force
+	 * @return bool true if data was requested
+	 */
+	public function requestMetaData($force = false)
+	{
+		try
+		{
+			if (parent::requestMetaData($force))
+			{
+				if ($this->children_requested)
+					$this->setLastUpdated();
+
+				return true;
+			}
+			else
+				return false;
+		}
+		catch (Sabre_DAV_S3_Exception $e)
+		{
+			if ($e->getHTTPCode() == 404)	// Ignore non existent folder objects (virtual folder)
+			{
+				if ($this->children_requested)
+					$this->setLastUpdated();
+
+				return true;
+			}
+			else
+				throw $e;
+		}
+	}
+
+	/**
 	 * Renames the virtual folder
 	 * Virtual folders can only be renamed while empty.
 	 * We would have to rename (copy & delete) every object in the bucket with the same prefix separately
@@ -116,6 +151,42 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 			throw new Sabre_DAV_Exception_NotImplemented('S3 virtual folders can not be renamed unless empty');
 
 		parent::setName($name);
+	}
+
+	/**
+	 * Returns the node's Storage Redundancy setting or it's default for child nodes
+	 *
+	 * @return string
+	 */
+	public function getStorageClass()
+	{
+		$storageclass = parent::getStorageClass();
+		if (!isset($storageclass))
+		{
+			$parent = $this->getParent();
+			if (isset($parent))
+				$storageclass = $parent->getStorageClass();
+		}
+
+		return $storageclass;
+	}
+
+	/**
+	 * Returns the node's Canned ACL
+	 *
+	 * @return string [AmazonS3::ACL_PRIVATE, AmazonS3::ACL_PUBLIC, AmazonS3::ACL_OPEN, AmazonS3::ACL_AUTH_READ, AmazonS3::ACL_OWNER_READ, AmazonS3::ACL_OWNER_FULL_CONTROL]
+	 */
+	public function getACL()
+	{
+		$acl = parent::getACL();
+		if (!isset($acl))
+		{
+			$parent = $this->getParent();
+			if (isset($parent))
+				$acl = $parent->getACL();
+		}
+
+		return $acl;
 	}
 
 	/**
@@ -175,7 +246,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 	 * Updates the children collection from S3
 	 *
 	 * @param bool $fulltree If true, all subdirectories will also be parsed, only the current path otherwise
-	 * @return void
+	 * @return bool true if data was requested
 	 */
 	public function requestChildren($fulltree = false)
 	{
@@ -185,6 +256,12 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 		if (!$response->isOK())
 			throw new Sabre_DAV_S3_Exception('S3 GET Bucket failed', $response);
 
+		$dirtystate = $this->isDirty();
+		$children_old = $this->children_oid;
+		sort($children_old);
+		$this->children = array();
+		$this->children_oid = array();
+
 		if ($response->body)
 		{
 			if ($response->body->CommonPrefixes)
@@ -192,7 +269,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 				foreach ($response->body->CommonPrefixes as $folder)
 				{
 					$prefix = (string)$folder->Prefix;
-					$node = Sabre_DAV_S3_Directory::getInstanceByKey(array('bucket' => $this->getBucket(), 'object' => $prefix), $prefix, $this);
+					$node = Sabre_DAV_S3_Directory::getInstanceByKey(array('bucket' => $this->bucket, 'object' => $prefix), $prefix, $this);
 					$this->addChild($node);
 					$nodes[$prefix] = $node;
 				}
@@ -222,12 +299,13 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 						$owner['DisplayName'] = (string)$object->Owner->DisplayName;
 					}
 
-					if ($object->Key == $this->object) //This virtual folder. Usually an empty object, if present. But it could also hold data like any other object... not accessible here!
+					if ((string)$object->Key == $this->object) //This virtual folder. Usually an empty object, if present. But it could also hold data like any other object... not accessible here!
 					{
 						$this->setLastModified($lastmodified);
 						$this->setSize($size);
 						$this->setETag($etag);
 						$this->setOwner($owner);
+						$object_self = true;
 					}
 					else
 					{
@@ -250,11 +328,7 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 									$parent = $nodes[$subkey];
 								else	// virtual folder without folder object, so create one
 								{
-									/*$node = $this->getEntityManager()->findByKey(array('bucket' => $parent->getBucket(), 'object' => $this->getObject() . $subkey));
-									if ($node)
-										$node->remove();
-									$node = $parent->createDirectory($keypart);*/
-									$node = Sabre_DAV_S3_Directory::getInstanceByKey(array('bucket' => $parent->getBucket(), 'object' => $this->getObject() . $subkey), $this->getObject() . $subkey, $parent);
+									$node = Sabre_DAV_S3_Directory::getInstanceByKey(array('bucket' => $parent->getBucket(), 'object' => $this->object . $subkey), $this->object . $subkey, $parent);
 									$parent->addChild($node);
 									$nodes[$subkey] = $node;
 									$parent = $node;
@@ -263,9 +337,9 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 
 							$subkey .= $keypart;
 							if (substr($subkey, -1, 1) === '/')
-								$node = Sabre_DAV_S3_Directory::getInstanceByKey(array('bucket' => $parent->getBucket(), 'object' => $this->getObject() . $subkey), $this->getObject() . $subkey, $parent);
+								$node = Sabre_DAV_S3_Directory::getInstanceByKey(array('bucket' => $parent->getBucket(), 'object' => $this->object . $subkey), $this->object . $subkey, $parent);
 							elseif (!array_key_exists($subkey . '/', $nodes)) //just skip files with the same name as a folder (file "somefilefolder" and folder "somefilefolder/")... not accessible here!
-								$node = Sabre_DAV_S3_File::getInstanceByKey(array('bucket' => $parent->getBucket(), 'object' => $this->getObject() . $subkey), $this->getObject() . $subkey, $parent);
+								$node = Sabre_DAV_S3_File::getInstanceByKey(array('bucket' => $parent->getBucket(), 'object' => $this->object . $subkey), $this->object . $subkey, $parent);
 							else
 								$node = null;
 
@@ -284,9 +358,15 @@ class Sabre_DAV_S3_Directory extends Sabre_DAV_S3_Object implements Sabre_DAV_S3
 			}
 		}
 
+		$children_new = $this->children_oid;
+		sort($children_new);
+		$this->markDirty($dirtystate || $children_new !== $children_old);
+
 		$this->children_requested = true;
 		if ($this->metadata_requested)
 			$this->setLastUpdated();
+
+		return true;
 	}
 
 	/**

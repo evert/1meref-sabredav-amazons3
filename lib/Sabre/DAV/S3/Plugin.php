@@ -62,7 +62,7 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 		{
 			if (!isset($this->logfile))
 			{
-				echo 'acquireing exclusive lock for log file...' . PHP_EOL;
+				echo 'acquiring exclusive lock for log file...' . PHP_EOL;
 				flush();
 				$this->logfile = fopen(__FILE__ . '.log', 'a');
 				flock($this->logfile, LOCK_EX);	// blocks until lock is acquired
@@ -170,15 +170,13 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 							if ($node instanceof Sabre_DAV_S3_ICollection)
 							{
 								$refobj = new ReflectionObject($node);
-								if ($refobj->hasProperty('children_id'))
+								if ($refobj->hasProperty('children_oid'))
 								{
 									$dirtystate = $node->isDirty();
 
-									$refprop = $refobj->getProperty('children_id');
+									$refprop = $refobj->getProperty('children_oid');
 									$refprop->setAccessible(true);
-
 									$children_old = $refprop->getValue($node);
-									$refprop->setValue($node, array());
 
 									$this->elog('requesting children...' . PHP_EOL);
 									$node->requestChildren();
@@ -187,21 +185,20 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 									$children_removed = array_diff($children_old, $children_new);
 									$children_added = array_diff($children_new, $children_old);
 
-									foreach ($children_removed as $id_removed)
+									foreach ($children_removed as $oid_removed)
 									{
-										$child = $em->find($id_removed);
+										$child = $em->find($oid_removed);
 										if ($child)
 										{
-											$this->elog('removing child: ' . $id_removed . PHP_EOL);
+											$this->elog('removing child: ' . $oid_removed . PHP_EOL);
 											$child->remove();
 										}
 									}
-									foreach ($children_added as $id_added)
+									foreach ($children_added as $oid_added)
 									{
-										$this->elog('adding child: ' . $id_added . PHP_EOL);
+										$this->elog('adding child: ' . $oid_added . PHP_EOL);
 									}
 
-									$refprop->setValue($node, $children_new);
 									$node->markDirty(!empty($children_removed) || !empty($children_added) || $dirtystate);
 								}
 							}
@@ -274,7 +271,7 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 		$request = $this->server->httpRequest;
 		if (!empty($nodelist))
 		{
-			$header = 'UPDATE ' . $request->getRawServerValue('REQUEST_URI') . " HTTP/1.1\r\n";
+			$header = 'UPDATE /' . $request->getRawServerValue('REQUEST_METHOD') . $request->getRawServerValue('REQUEST_URI') . " HTTP/1.1\r\n";
 			$host = $request->getRawServerValue('HTTP_HOST');
 			if ($host)
 				$header .= 'Host: ' . $host . "\r\n";
