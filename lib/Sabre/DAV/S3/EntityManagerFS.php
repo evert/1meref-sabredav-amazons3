@@ -48,10 +48,10 @@ class Sabre_DAV_S3_EntityManagerFS extends Sabre_DAV_S3_EntityManager
 		if ($path !== '' && file_exists($path))
 		{
 			$this->datadir = $path;
-			$this->isopen = true;
+			$this->open = true;
 		}
 
-		$this->ormstrategy = $ormstrategy;
+		$this->orm_strategy = $ormstrategy;
 		$this->setFlushMode($flushmode);
 	}
 
@@ -65,7 +65,7 @@ class Sabre_DAV_S3_EntityManagerFS extends Sabre_DAV_S3_EntityManager
 	{
 		$class_id = explode(':', $oid);
 
-		switch ($this->ormstrategy)
+		switch ($this->orm_strategy)
 		{
 			case Sabre_DAV_S3_IEntityManager::ORM_SINGLE_TABLE:
 				return $this->datadir;
@@ -90,6 +90,18 @@ class Sabre_DAV_S3_EntityManagerFS extends Sabre_DAV_S3_EntityManager
 			return $dir . DIRECTORY_SEPARATOR . Sabre_DAV_S3_EntityManagerFS::FILE_PREFIX . str_replace(':', '-', $oid) . Sabre_DAV_S3_EntityManagerFS::FILE_EXTENSION;
 		else
 			return null;
+	}
+
+	/**
+	 * Is there an Entity with the given OID in the data store
+	 *
+	 * @param string $oid
+	 * @return bool
+	 */
+	protected function exists($oid)
+	{
+		$filename = $this->getFileName($oid);
+		return file_exists($filename);
 	}
 
 	/**
