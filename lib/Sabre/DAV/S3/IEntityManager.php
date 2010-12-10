@@ -48,17 +48,16 @@ interface Sabre_DAV_S3_IEntityManager
 	const FLUSH_IMMEDIATE = 3;
 
 	/**
-	 * Gets the current flush mode
+	 * Return the current flush mode
 	 *
 	 * @return int
 	 */
 	public function getFlushMode();
 
 	/**
-	 * Sets the current flush mode
+	 * Set the current flush mode
 	 *
 	 * @param int $flushmode
-	 * @return void
 	 */
 	public function setFlushMode($flushmode);
 
@@ -103,18 +102,8 @@ interface Sabre_DAV_S3_IEntityManager
 	public function findByKey($class, $key);
 
 	/**
-	 * Makes an Entity managed
-	 * If the Entity has no oid the the Entity is made persistent
-	 *
-	 * @param Sabre_DAV_S3_IPersistable $object
-	 * @param bool $overwrite
-	 * @return bool
-	 */
-	public function manage(Sabre_DAV_S3_IPersistable $object, $overwrite = false);
-
-	/**
 	 * Makes an Entity persistent
-	 * Assigns a new Object ID if new
+	 * Assigns a new persistence Object ID (OID) if new
 	 *
 	 * @param Sabre_DAV_S3_IPersistable $object
 	 * @param bool $overwrite
@@ -123,15 +112,25 @@ interface Sabre_DAV_S3_IEntityManager
 	public function persist(Sabre_DAV_S3_IPersistable $object, $overwrite = false);
 
 	/**
-	 * Make a copy (clone) of the Entity persistent
+	 * Delete the Entity from the data store
+	 * Entity will still exist in the current persistence context, but changes are not saved anymore
 	 *
 	 * @param Sabre_DAV_S3_IPersistable $object
-	 * @return Sabre_DAV_S3_IPersistable|bool
+	 * @return bool
 	 */
-	public function merge(Sabre_DAV_S3_IPersistable $object);
+	public function remove(Sabre_DAV_S3_IPersistable $object);
 
 	/**
-	 * Refresh the Entity from the persistent state, even if the Entity is not managed
+	 * Copy (merge) the state of one Entity into another
+	 *
+	 * @param Sabre_DAV_S3_IPersistable $destination
+	 * @param Sabre_DAV_S3_IPersistable $source
+	 * @return bool
+	 */
+	public function updateObjectState(Sabre_DAV_S3_IPersistable $destination, Sabre_DAV_S3_IPersistable $source);
+
+	/**
+	 * Refresh a (managed, detached or new) Entity from the data store
 	 *
 	 * @param Sabre_DAV_S3_IPersistable $object
 	 * @return bool
@@ -156,13 +155,12 @@ interface Sabre_DAV_S3_IEntityManager
 	public function detach(Sabre_DAV_S3_IPersistable $object);
 
 	/**
-	 * Delete the saved Entity
-	 * Entity will still exist in the current persistence context, but changes not saved anymore
+	 * Make a copy (clone) of the Entity persistent
 	 *
 	 * @param Sabre_DAV_S3_IPersistable $object
-	 * @return bool
+	 * @return Sabre_DAV_S3_IPersistable|bool
 	 */
-	public function remove(Sabre_DAV_S3_IPersistable $object);
+	public function merge(Sabre_DAV_S3_IPersistable $object);
 
 	/**
 	 * Save all pending changes
@@ -174,7 +172,7 @@ interface Sabre_DAV_S3_IEntityManager
 	/**
 	 * Remove all expired Entities
 	 *
-	 * @param int $before timestamp
+	 * @param int $age timestamp
 	 * @param string $class
 	 */
 	public function expire($before, $class = null);

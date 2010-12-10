@@ -154,84 +154,98 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 					$this->elog('found!' . PHP_EOL .
 						'name: "' . $node->getName() . '"' . PHP_EOL);
 
-					$lastmodified = $node->getLastUpdated();
-					if ($forceupdate || $lastmodified + $this->lifetime <= time() || !isset($lastmodified))
+					if ($em->contains($node))
 					{
-						try
+						$lastmodified = $node->getLastUpdated();
+						if ($forceupdate || $lastmodified + $this->lifetime <= time() || !isset($lastmodified))
 						{
-							if ($forceupdate)
-								$this->elog('forcing update: ' . (time() - $lastmodified) . '/' . $this->lifetime . PHP_EOL);
-							else
-								$this->elog('age qualifies for update: ' . (time() - $lastmodified) . '/' . $this->lifetime . PHP_EOL);
-
-							$this->elog('requesting meta data...' . PHP_EOL);
-							$node->requestMetaData(true);
-
-							if ($node instanceof Sabre_DAV_S3_ICollection)
+							try
 							{
-								$refobj = new ReflectionObject($node);
-								if ($refobj->hasProperty('children_oid'))
+								if ($forceupdate)
+									$this->elog('forcing update: ' . (time() - $lastmodified) . '/' . $this->lifetime . PHP_EOL);
+								else
+									$this->elog('age qualifies for update: ' . (time() - $lastmodified) . '/' . $this->lifetime . PHP_EOL);
+
+								$this->elog('requesting meta data...' . PHP_EOL);
+								$node->requestMetaData(true);
+
+								if ($node instanceof Sabre_DAV_S3_ICollection)
 								{
-									$dirtystate = $node->isDirty();
-
-									$refprop = $refobj->getProperty('children_oid');
-									$refprop->setAccessible(true);
-									$children_old = $refprop->getValue($node);
-
-									$this->elog('requesting children...' . PHP_EOL);
-									$node->requestChildren();
-
-									$children_new = $refprop->getValue($node);
-									$children_removed = array_diff($children_old, $children_new);
-									$children_added = array_diff($children_new, $children_old);
-
-									foreach ($children_removed as $oid_removed)
+									$refobj = new ReflectionObject($node);
+									if ($refobj->hasProperty('children_oid'))
 									{
-										$child = $em->find($oid_removed);
-										if ($child)
+										$dirtystate = $node->isDirty();
+
+										$refprop = $refobj->getProperty('children_oid');
+										$refprop->setAccessible(true);
+										$children_old = $refprop->getValue($node);
+
+										$this->elog('requesting children...' . PHP_EOL);
+										$node->requestChildren();
+
+										$children_new = $refprop->getValue($node);
+										$children_removed = array_diff($children_old, $children_new);
+										$children_added = array_diff($children_new, $children_old);
+
+										foreach ($children_removed as $oid_removed)
 										{
-											$this->elog('removing child: ' . $oid_removed . PHP_EOL);
-											$child->remove();
+											$child = $em->find($oid_removed);
+											if ($child)
+											{
+												$this->elog('removing child: ' . $oid_removed . ' (' . $child->getName() . ')' . PHP_EOL);
+												$child->remove();
+											}
+										}
+										foreach ($children_added as $oid_added)
+										{
+											$child = $em->find($oid_added);
+											if ($child)
+												$this->elog('adding child: ' . $oid_added . ' (' . $child->getName() . ')' . PHP_EOL);
+										}
+
+										$node->markDirty(!empty($children_removed) || !empty($children_added) || $dirtystate);
+									}
+								}
+								$node->setLastUpdated();
+							}
+							catch (Sabre_DAV_S3_Exception $e)
+							{
+								$this->elog('s3 error: ' . $e->getMessage() . PHP_EOL);
+								if ($e->getHTTPCode() == 404)
+								{
+									$this->elog('removing...' . PHP_EOL);
+									$node->remove();
+									$parent = $node->getParent();
+									if (isset($parent))
+									{
+										$this->elog('removing from parent: ' . $parent->getOID() . ' (' . $parent->getName() . ')' . PHP_EOL);
+										try
+										{
+											$parent->removeChild($node->getName());
+											$this->elog('success!' . PHP_EOL);
+										}
+										catch (Exception $e)
+										{
+											$this->elog('error: ' . $e->getMessage() . PHP_EOL);
 										}
 									}
-									foreach ($children_added as $oid_added)
-									{
-										$this->elog('adding child: ' . $oid_added . PHP_EOL);
-									}
-
-									$node->markDirty(!empty($children_removed) || !empty($children_added) || $dirtystate);
 								}
 							}
-							$node->setLastUpdated();
-						}
-						catch (Sabre_DAV_S3_Exception $e)
-						{
-							$this->elog('s3 error: ' . $e->getMessage() . PHP_EOL);
-							if ($e->getHTTPCode() == 404)
+							catch (Exception $e)
 							{
-								$this->elog('removing: ' . $node->getOID() . PHP_EOL);
-								$node->remove();
-								$parent = $node->getParent();
-								if (isset($parent))
-								{
-									$this->elog('removing from parent: ' . $parent->getOID() . PHP_EOL);
-									$parent->removeChild($node->getName());
-								}
+								$this->elog('error: ' . $e->getMessage() . PHP_EOL);
 							}
 						}
-						catch (Exception $e)
-						{
-							$this->elog('error: ' . $e->getMessage() . PHP_EOL);
-						}
+						else
+							$this->elog('skipping update: ' . (time() - $lastmodified) . '/' . $this->lifetime . PHP_EOL);
 					}
 					else
-						$this->elog('skipping update: ' . (time() - $lastmodified) . '/' . $this->lifetime . PHP_EOL);
+						$this->elog('already scheduled for removal!' . PHP_EOL);
 				}
 				else
-				{
 					$this->elog('not found!' . PHP_EOL);
-				}
 			}
+
 			$oid = strtok("\r\n");
 		}
 

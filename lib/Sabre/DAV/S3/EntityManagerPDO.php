@@ -38,10 +38,10 @@ class Sabre_DAV_S3_EntityManagerPDO extends Sabre_DAV_S3_EntityManager
 		{
 			$this->pdo = $pdo;
 			if ($pdo->query('SELECT 1;') !== false)
-				$this->isopen = true;
+				$this->open = true;
 		}
 
-		$this->ormstrategy = $ormstrategy;
+		$this->orm_strategy = $ormstrategy;
 		$this->setFlushMode($flushmode);
 	}
 
@@ -53,7 +53,7 @@ class Sabre_DAV_S3_EntityManagerPDO extends Sabre_DAV_S3_EntityManager
 	 */
 	protected function getTableName($oid)
 	{
-		switch ($this->ormstrategy)
+		switch ($this->orm_strategy)
 		{
 			case Sabre_DAV_S3_IEntityManager::ORM_SINGLE_TABLE:
 				return self::TABLE_PREFIX . 'Object';
@@ -89,6 +89,22 @@ class Sabre_DAV_S3_EntityManagerPDO extends Sabre_DAV_S3_EntityManager
 			throw new ErrorException("Entity Manager cannot access the database");
 
 		return true;
+	}
+
+	/**
+	 * Is there an Entity with the given OID in the data store
+	 *
+	 * @param string $oid
+	 * @return bool
+	 */
+	protected function exists($oid)
+	{
+		$sql = 'SELECT 1 FROM ' . $this->getTableName($oid) . ' WHERE oid = :oid;';
+		$qry = $this->pdo->prepare($sql);
+		if ($qry->execute(array(':oid' => $oid)) === false)
+			return false;
+
+		return $qry->rowCount() > 0;
 	}
 
 	/**
@@ -142,7 +158,7 @@ class Sabre_DAV_S3_EntityManagerPDO extends Sabre_DAV_S3_EntityManager
 			$qry = $this->pdo->prepare($sql);
 			if ($qry->execute(array(':oid' => $oid, ':object' => $data, ':created' => $this->getObjectProperty($object, 'entity_created'))) === false)
 				throw new ErrorException("Entity Manager cannot access the database");
-			
+
 			if ($qry->rowCount() < 1)
 				throw new ErrorException("Entity Manager cannot insert the Object ($oid)");
 		}

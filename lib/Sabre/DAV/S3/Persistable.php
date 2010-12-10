@@ -180,20 +180,6 @@ abstract class Sabre_DAV_S3_Persistable implements Sabre_DAV_S3_IPersistable
 	}
 
 	/**
-	 * Make the Object managed
-	 *
-	 * @param bool $overwrite
-	 * @return bool
-	 */
-	public final function manage($overwrite = false)
-	{
-		if (!$this->getEntityManager())
-			return false;
-
-		return $this->getEntityManager()->manage($this, $overwrite);
-	}
-
-	/**
 	 * Make the Object persistent
 	 *
 	 * @param bool $overwrite
