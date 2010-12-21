@@ -54,7 +54,6 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 
 	public function __destruct()
 	{
-debug_log('queue destruct', $this->filehandle);
 		if ($this->filehandle)
 		{
 			fflush($this->filehandle);
