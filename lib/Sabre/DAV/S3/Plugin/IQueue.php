@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Interface for a shared string queue
+ * Interface for a shared queue
  *
  * @package Sabre
  * @subpackage DAV
@@ -34,7 +34,6 @@ interface Sabre_DAV_S3_Plugin_IQueue
 
 	/**
 	 * reorganize the queue storage
-	 * only call this if you are sure there are no other reading instances that have already begun dequeueing!
 	 *
 	 * @return boolean
 	 */
@@ -42,7 +41,6 @@ interface Sabre_DAV_S3_Plugin_IQueue
 
 	/**
 	 * clear the queue
-	 * only call this if you are sure there are no other reading instances that have already begun dequeueing!
 	 *
 	 * @return boolean
 	 */

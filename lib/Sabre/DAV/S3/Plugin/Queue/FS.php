@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Filesystem implementation of a shared string queue
+ * Filesystem implementation of a shared queue
  *
  * @package Sabre
  * @subpackage DAV
@@ -10,6 +10,16 @@
  */
 class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 {
+	const HEADER_SIZE = 24;
+
+	const HEADER_PAD = ' ';
+
+	const EOL = "\n";
+
+	static $TR_ENCODE = array("\\" => '\\\\', "\n" => '\n', "\r" => '\r');
+
+	static $TR_DECODE = array('\\\\' => "\\", '\n' => "\n", '\r' => "\r");
+
 	/**
 	 * The file to store the queue in
 	 *
@@ -25,13 +35,6 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	protected $filehandle = null;
 
 	/**
-	 * The current read (dequeue) position in the file
-	 *
-	 * @var int
-	 */
-	protected $pos = 0;
-
-	/**
 	 * Initialize the Queue
 	 *
 	 * @param string $filename
@@ -42,7 +45,7 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 		$path = dirname($filename);
 		if ($path == '.')
 			$path = '';
-		if (strpos($path, '/') !== 0 && strpos($path, '\\') !== 0 && strpos($path, ':') !== 1)	//not an absolute path?
+		if (strpos($path, '/') !== 0 && strpos($path, '\\') !== 0 && strpos($path, ':') !== 1) //not an absolute path?
 			$path = getcwd() . DIRECTORY_SEPARATOR . $path;
 
 		if ($path !== '' && file_exists($path))
@@ -66,40 +69,59 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	}
 
 	/**
+	 * Reads the position of the next item to dequeue from the header
+	 *
+	 * @return integer|false
+	 */
+	private function getCurrentPos()
+	{
+		$pos = 0;
+
+		fseek($this->filehandle, 0, SEEK_SET);
+		$header = fread($this->filehandle, self::HEADER_SIZE);
+		if (isset($header) && $header !== false && strlen($header) == self::HEADER_SIZE)
+			$pos = (integer)unserialize(rtrim($header, self::EOL . self::HEADER_PAD));
+		if ($pos < self::HEADER_SIZE)
+			$this->setNextPos($pos = self::HEADER_SIZE);
+
+		return $pos;
+	}
+
+	/**
+	 * Sets the position of the next item to dequeue in the header
+	 *
+	 * @param integer $pos
+	 * @return void
+	 */
+	private function setNextPos($pos)
+	{
+		fseek($this->filehandle, 0, SEEK_SET);
+		$header = str_pad(serialize((integer)$pos), self::HEADER_SIZE - 1, self::HEADER_PAD, STR_PAD_RIGHT) . self::EOL;
+		fwrite($this->filehandle, $header, self::HEADER_SIZE);
+	}
+
+	/**
 	 * Get the top entry and delete it from the queue
 	 *
-	 * @return string|boolean
+	 * @return mixed
 	 */
 	public function dequeue()
 	{
 		if (!$this->filehandle)
 			return false;
 
-		$trans = array('\\\\' => "\\", '\n' => "\n", '\r' => "\r", '\0' => "\0");
-		$data = "\0";
+		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
+		fseek($this->filehandle, $this->getCurrentPos(), SEEK_SET);
 
-		flock($this->filehandle, LOCK_EX);	// blocks until lock is acquired
-		fseek($this->filehandle, $this->pos, SEEK_SET);
-
-		do
-		{
-			$startpos = ftell($this->filehandle);
-			$data = stream_get_line($this->filehandle, 8192, "\n");
-			$this->pos = ftell($this->filehandle);
-		}
-		while (isset($data) && $data !== false && $data !== '' && $data[0] === "\0");
-
-		if (isset($data) && $data !== false && $data !== '' && $data[0] !== "\0")
-		{
-			fseek($this->filehandle, $startpos, SEEK_SET);
-			fwrite($this->filehandle, "\0");
-		}
+		$data = stream_get_line($this->filehandle, 8192, self::EOL);
+		if (isset($data) && $data !== false && $data !== '')
+			$this->setNextPos(ftell($this->filehandle));
 
 		fflush($this->filehandle);
 		flock($this->filehandle, LOCK_UN);
 
-		if (isset($data) && $data !== false && $data !== '' && $data[0] !== "\0")
-			return strtr(substr($data, 1), $trans);
+		if (isset($data) && $data !== false && $data !== '')
+			return unserialize(strtr($data, self::$TR_DECODE));
 		else
 			return false;
 	}
@@ -107,7 +129,7 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	/**
 	 * Add strings to the end of the queue
 	 *
-	 * @param $data string|array
+	 * @param $data mixed|array
 	 * @return boolean
 	 */
 	public function enqueue($data)
@@ -115,14 +137,17 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 		if (!$this->filehandle)
 			return false;
 
-		$trans = array("\\" => '\\\\', "\n" => '\n', "\r" => '\r', "\0" => '\0');
-		$data = (array)$data;
+		if (!is_array($data))
+			$data = array($data);
 
-		flock($this->filehandle, LOCK_EX);	// blocks until lock is acquired
+		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 		fseek($this->filehandle, 0, SEEK_END);
 
+		if (ftell($this->filehandle) < self::HEADER_SIZE)
+			$this->setNextPos(self::HEADER_SIZE);
+
 		foreach ($data as $v)
-			fwrite($this->filehandle, 's' . substr(strtr((string)$v, $trans), 0, 8190) . "\n", 8192);
+			fwrite($this->filehandle, substr(strtr(serialize($v), self::$TR_ENCODE), 0, 8191) . self::EOL, 8192);
 
 		fflush($this->filehandle);
 		flock($this->filehandle, LOCK_UN);
@@ -132,7 +157,6 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 
 	/**
 	 * reorganize the queue file
-	 * only call this if you are sure there are no other reading instances that have already begun dequeueing!
 	 *
 	 * @return boolean
 	 */
@@ -141,33 +165,19 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 		if (!$this->filehandle)
 			return false;
 
-		flock($this->filehandle, LOCK_EX);	// blocks until lock is acquired
-		fseek($this->filehandle, $this->pos, SEEK_SET);
+		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 
-		do
+		$pos = $this->getCurrentPos();
+		if ($pos > self::HEADER_SIZE)
 		{
-			$startpos = ftell($this->filehandle);
-			$data = stream_get_line($this->filehandle, 8192, "\n");
+			fseek($this->filehandle, $pos, SEEK_SET);
+			$fh = fopen('php://temp', 'w+');
+			stream_copy_to_stream($this->filehandle, $fh);
+			$this->setNextPos(self::HEADER_SIZE);
+			stream_copy_to_stream($fh, $this->filehandle);
+			fclose($fh);
+			ftruncate($this->filehandle, ftell($this->filehandle));
 		}
-		while (isset($data) && $data !== false && $data !== '' && $data[0] === "\0");
-
-		if (isset($data) && $data !== false && $data !== '' && $data[0] !== "\0")
-		{
-			if ($startpos > 0)
-			{
-				fseek($this->filehandle, $startpos, SEEK_SET);
-				$fh = fopen('php://temp', 'w+');
-				stream_copy_to_stream($this->filehandle, $fh);
-				fseek($this->filehandle, 0, SEEK_SET);
-				stream_copy_to_stream($fh, $this->filehandle);
-				fclose($fh);
-				ftruncate($this->filehandle, ftell($this->filehandle));
-			}
-		}
-		else
-			ftruncate($this->filehandle, 0);
-
-		$this->pos = 0;
 
 		fflush($this->filehandle);
 		flock($this->filehandle, LOCK_UN);
@@ -177,7 +187,6 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 
 	/**
 	 * clear the queue file
-	 * only call this if you are sure there are no other reading instances that have already begun dequeueing!
 	 *
 	 * @return boolean
 	 */
@@ -186,10 +195,10 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 		if (!$this->filehandle)
 			return false;
 
-		flock($this->filehandle, LOCK_EX);	// blocks until lock is acquired
+		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 
-		ftruncate($this->filehandle, 0);
-		$this->pos = 0;
+		$this->setNextPos(self::HEADER_SIZE);
+		ftruncate($this->filehandle, self::HEADER_SIZE);
 
 		fflush($this->filehandle);
 		flock($this->filehandle, LOCK_UN);
