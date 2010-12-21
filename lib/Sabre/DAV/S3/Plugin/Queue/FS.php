@@ -50,6 +50,9 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 
 		if ($path !== '' && file_exists($path))
 			$this->filename = $path . DIRECTORY_SEPARATOR . basename($filename);
+
+		if (isset($this->filename) && !file_exists($this->filename))
+			file_put_contents($this->filename, '', FILE_APPEND | LOCK_EX);
 	}
 
 	public function __destruct()
@@ -104,7 +107,7 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 		if (!isset($this->filename))
 			return false;
 		if (!isset($this->filehandle))
-			$this->filehandle = fopen($this->filename, 'w+');
+			$this->filehandle = fopen($this->filename, 'r+');
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 		fseek($this->filehandle, $this->getCurrentPos(), SEEK_SET);
@@ -133,7 +136,7 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 		if (!isset($this->filename))
 			return false;
 		if (!isset($this->filehandle))
-			$this->filehandle = fopen($this->filename, 'w+');
+			$this->filehandle = fopen($this->filename, 'r+');
 
 		if (!is_array($data))
 			$data = array($data);
@@ -162,7 +165,7 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 		if (!isset($this->filename))
 			return false;
 		if (!isset($this->filehandle))
-			$this->filehandle = fopen($this->filename, 'w+');
+			$this->filehandle = fopen($this->filename, 'r+');
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 
@@ -195,7 +198,7 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 		if (!isset($this->filename))
 			return false;
 		if (!isset($this->filehandle))
-			$this->filehandle = fopen($this->filename, 'w+');
+			$this->filehandle = fopen($this->filename, 'r+');
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 
