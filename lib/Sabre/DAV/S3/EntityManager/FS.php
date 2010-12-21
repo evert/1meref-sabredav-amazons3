@@ -8,7 +8,7 @@
  * @author Paul Voegler
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
-class Sabre_DAV_S3_EntityManagerFS extends Sabre_DAV_S3_EntityManager
+class Sabre_DAV_S3_EntityManager_FS extends Sabre_DAV_S3_EntityManager
 {
 	/**
 	 * Prefix for file names
