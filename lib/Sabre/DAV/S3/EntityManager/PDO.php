@@ -8,7 +8,7 @@
  * @author Paul Voegler
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
-class Sabre_DAV_S3_EntityManagerPDO extends Sabre_DAV_S3_EntityManager
+class Sabre_DAV_S3_EntityManager_PDO extends Sabre_DAV_S3_EntityManager
 {
 	/**
 	 * Prefix for table names
