@@ -25,6 +25,20 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 	protected $shutdownfunction_enabled = false;
 
 	/**
+	 * The lock for exclusive processing power
+	 *
+	 * @var resource
+	 */
+	protected $processlock = null;
+
+	/**
+	 * The queue provider
+	 *
+	 * @var Sabre_DAV_S3_Plugin_IQueue
+	 */
+	protected $queue;
+
+	/**
 	 * The lifetime in seconds of an entity before it is updated again
 	 *
 	 * @var int
@@ -34,10 +48,12 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 	/**
 	 * Creates the Plugin
 	 *
+	 * @param Sabre_DAV_S3_Plugin_IQueue $queue The queue provider
 	 * @param int $lifetime The minimum time in seconds passed needed from the last modification time for an entity until it is updated.
 	 */
-	public function __construct($lifetime = 0)
+	public function __construct(Sabre_DAV_S3_Plugin_IQueue $queue, $lifetime = 0)
 	{
+		$this->queue = $queue;
 		$this->lifetime = $lifetime;
 	}
 
@@ -65,13 +81,168 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 				echo 'acquiring exclusive lock for log file...' . PHP_EOL;
 				flush();
 				$this->logfile = fopen(__FILE__ . '.log', 'a');
-				flock($this->logfile, LOCK_EX);	// blocks until lock is acquired
+				//flock($this->logfile, LOCK_EX);	// blocks until lock is acquired
 			}
 			fwrite($this->logfile, $s);
+			fflush($this->logfile);
 		}
 
 		echo $s;
 		flush();
+	}
+
+	/**
+	 * Try to acquire the lock for exclusive processing power
+	 *
+	 * @return boolean set to true if lock could be acquired
+	 */
+	protected function acquireProcessLock()
+	{
+		$this->processlock = fopen(__FILE__, 'r');
+		flock($this->processlock, LOCK_EX | LOCK_NB);
+		$r = fgets($this->processlock, 3);
+
+		return ($r === '<?');
+	}
+
+	/**
+	 * Release the lock for exclusive processing power
+	 *
+	 * @return void
+	 */
+	protected function releaseProcessLock()
+	{
+		if ($this->processlock)
+			flock($this->processlock, LOCK_UN);
+	}
+
+	/**
+	 * Process a list of nodes (Entity IDs) to update from S3
+	 *
+	 * @param Sabre_DAV_S3_Plugin_IQueue $queue
+	 * @param Sabre_DAV_S3_IEntityManager $em
+	 * @param int $max_process_time stop processing after this many of seconds
+	 * @return boolean
+	 */
+	protected function processQueue(Sabre_DAV_S3_Plugin_IQueue $queue, Sabre_DAV_S3_IEntityManager $em, $max_process_time = null)
+	{
+		$start = time();
+
+		while (!$queue->isEmpty() && (!($max_process_time > 0) || time() - $start < $max_process_time))
+		{
+			$oid = $queue->dequeue();
+			if ($oid === false)
+				break;	//abort on error
+			if (empty($oid))
+				continue;	//continue on empty line
+
+			$forceupdate = false;
+			if (strpos($oid, '!') === 0)
+			{
+				$oid = substr($oid, 1);
+				$forceupdate = true;
+			}
+
+			$this->elog(PHP_EOL . 'searching for: ' . $oid . '... ');
+			$node = $em->find($oid);
+			if ($node)
+			{
+				$this->elog('found!' . PHP_EOL .
+					'name: "' . $node->getName() . '"' . PHP_EOL);
+
+				if ($em->contains($node))
+				{
+					$lastmodified = $node->getLastUpdated();
+					if ($forceupdate || $lastmodified + $this->lifetime <= time() || !isset($lastmodified))
+					{
+						try
+						{
+							if ($forceupdate)
+								$this->elog('forcing update: ' . (time() - $lastmodified) . '/' . $this->lifetime . PHP_EOL);
+							else
+								$this->elog('age qualifies for update: ' . (time() - $lastmodified) . '/' . $this->lifetime . PHP_EOL);
+
+							$this->elog('requesting meta data...' . PHP_EOL);
+							$node->requestMetaData(true);
+
+							if ($node instanceof Sabre_DAV_S3_ICollection)
+							{
+								$refobj = new ReflectionObject($node);
+								if ($refobj->hasProperty('children_oid'))
+								{
+									$dirtystate = $node->isDirty();
+
+									$refprop = $refobj->getProperty('children_oid');
+									$refprop->setAccessible(true);
+									$children_old = $refprop->getValue($node);
+
+									$this->elog('requesting children...' . PHP_EOL);
+									$node->requestChildren();
+
+									$children_new = $refprop->getValue($node);
+									$children_removed = array_diff($children_old, $children_new);
+									$children_added = array_diff($children_new, $children_old);
+
+									foreach ($children_removed as $oid_removed)
+									{
+										$child = $em->find($oid_removed);
+										if ($child)
+										{
+											$this->elog('removing child: ' . $oid_removed . ' (' . $child->getName() . ')' . PHP_EOL);
+											$child->remove();
+										}
+									}
+									foreach ($children_added as $oid_added)
+									{
+										$child = $em->find($oid_added);
+										if ($child)
+											$this->elog('adding child: ' . $oid_added . ' (' . $child->getName() . ')' . PHP_EOL);
+									}
+
+									$node->markDirty(!empty($children_removed) || !empty($children_added) || $dirtystate);
+								}
+							}
+							$node->setLastUpdated();
+						}
+						catch (Sabre_DAV_S3_Exception $e)
+						{
+							$this->elog('s3 error: ' . $e->getMessage() . PHP_EOL);
+							if ($e->getHTTPCode() == 404)
+							{
+								$this->elog('removing...' . PHP_EOL);
+								$node->remove();
+								$parent = $node->getParent();
+								if (isset($parent))
+								{
+									$this->elog('removing from parent: ' . $parent->getOID() . ' (' . $parent->getName() . ')' . PHP_EOL);
+									try
+									{
+										$parent->removeChild($node->getName());
+										$this->elog('success!' . PHP_EOL);
+									}
+									catch (Exception $e)
+									{
+										$this->elog('error: ' . $e->getMessage() . PHP_EOL);
+									}
+								}
+							}
+						}
+						catch (Exception $e)
+						{
+							$this->elog('error: ' . $e->getMessage() . PHP_EOL);
+						}
+					}
+					else
+						$this->elog('skipping update: ' . (time() - $lastmodified) . '/' . $this->lifetime . PHP_EOL);
+				}
+				else
+					$this->elog('already scheduled for removal!' . PHP_EOL);
+			}
+			else
+				$this->elog('not found!' . PHP_EOL);
+		}
+
+		return true;
 	}
 
 	/**
@@ -135,122 +306,22 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 		$body = $this->server->httpRequest->getBody(true);
 		$this->elog('requested updates: ' . PHP_EOL . $body);
 
-		$oid = strtok($body, "\r\n");
-		while ($oid !== false)
+		$body = explode("\n", rtrim($body, "\n"));
+		$this->queue->enqueue($body);
+
+		if ($this->acquireProcessLock())
 		{
-			if ($oid !== '')
-			{
-				$forceupdate = false;
-				if (strpos($oid, '!') === 0)
-				{
-					$oid = substr($oid, 1);
-					$forceupdate = true;
-				}
+			$this->elog(PHP_EOL . 'spawning new process to handle the queue...' . PHP_EOL);
+			$this->queue->organize();
+			$this->processQueue($this->queue, $em);
 
-				$this->elog(PHP_EOL . 'searching for: ' . $oid . '... ');
-				$node = $em->find($oid);
-				if ($node)
-				{
-					$this->elog('found!' . PHP_EOL .
-						'name: "' . $node->getName() . '"' . PHP_EOL);
+			$this->releaseProcessLock();
 
-					if ($em->contains($node))
-					{
-						$lastmodified = $node->getLastUpdated();
-						if ($forceupdate || $lastmodified + $this->lifetime <= time() || !isset($lastmodified))
-						{
-							try
-							{
-								if ($forceupdate)
-									$this->elog('forcing update: ' . (time() - $lastmodified) . '/' . $this->lifetime . PHP_EOL);
-								else
-									$this->elog('age qualifies for update: ' . (time() - $lastmodified) . '/' . $this->lifetime . PHP_EOL);
-
-								$this->elog('requesting meta data...' . PHP_EOL);
-								$node->requestMetaData(true);
-
-								if ($node instanceof Sabre_DAV_S3_ICollection)
-								{
-									$refobj = new ReflectionObject($node);
-									if ($refobj->hasProperty('children_oid'))
-									{
-										$dirtystate = $node->isDirty();
-
-										$refprop = $refobj->getProperty('children_oid');
-										$refprop->setAccessible(true);
-										$children_old = $refprop->getValue($node);
-
-										$this->elog('requesting children...' . PHP_EOL);
-										$node->requestChildren();
-
-										$children_new = $refprop->getValue($node);
-										$children_removed = array_diff($children_old, $children_new);
-										$children_added = array_diff($children_new, $children_old);
-
-										foreach ($children_removed as $oid_removed)
-										{
-											$child = $em->find($oid_removed);
-											if ($child)
-											{
-												$this->elog('removing child: ' . $oid_removed . ' (' . $child->getName() . ')' . PHP_EOL);
-												$child->remove();
-											}
-										}
-										foreach ($children_added as $oid_added)
-										{
-											$child = $em->find($oid_added);
-											if ($child)
-												$this->elog('adding child: ' . $oid_added . ' (' . $child->getName() . ')' . PHP_EOL);
-										}
-
-										$node->markDirty(!empty($children_removed) || !empty($children_added) || $dirtystate);
-									}
-								}
-								$node->setLastUpdated();
-							}
-							catch (Sabre_DAV_S3_Exception $e)
-							{
-								$this->elog('s3 error: ' . $e->getMessage() . PHP_EOL);
-								if ($e->getHTTPCode() == 404)
-								{
-									$this->elog('removing...' . PHP_EOL);
-									$node->remove();
-									$parent = $node->getParent();
-									if (isset($parent))
-									{
-										$this->elog('removing from parent: ' . $parent->getOID() . ' (' . $parent->getName() . ')' . PHP_EOL);
-										try
-										{
-											$parent->removeChild($node->getName());
-											$this->elog('success!' . PHP_EOL);
-										}
-										catch (Exception $e)
-										{
-											$this->elog('error: ' . $e->getMessage() . PHP_EOL);
-										}
-									}
-								}
-							}
-							catch (Exception $e)
-							{
-								$this->elog('error: ' . $e->getMessage() . PHP_EOL);
-							}
-						}
-						else
-							$this->elog('skipping update: ' . (time() - $lastmodified) . '/' . $this->lifetime . PHP_EOL);
-					}
-					else
-						$this->elog('already scheduled for removal!' . PHP_EOL);
-				}
-				else
-					$this->elog('not found!' . PHP_EOL);
-			}
-
-			$oid = strtok("\r\n");
+			$this->elog(PHP_EOL . 'flushing persistence context...' . PHP_EOL);
+			$em->flush();
 		}
-
-		$this->elog(PHP_EOL . 'flushing persistence context...' . PHP_EOL);
-		$em->flush();
+		else
+			$this->elog(PHP_EOL . 'queue process already running, updates added to queue...' . PHP_EOL);
 
 		$this->elog('execution time: ' . (microtime(true) - $ts) . PHP_EOL .
 			'------------------------------------------------------------------------------' . PHP_EOL . PHP_EOL);
