@@ -321,8 +321,8 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 		if ($this->acquireProcessLock())
 		{
 			$this->elog(PHP_EOL . 'spawning new process to handle the queue...');
-			$this->queue->organize();
 			$this->processQueue($this->queue, $em);
+			$this->queue->organize();
 
 			$this->releaseProcessLock();
 
