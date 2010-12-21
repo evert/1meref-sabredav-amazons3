@@ -49,23 +49,18 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 			$path = getcwd() . DIRECTORY_SEPARATOR . $path;
 
 		if ($path !== '' && file_exists($path))
-		{
 			$this->filename = $path . DIRECTORY_SEPARATOR . basename($filename);
-			$this->filehandle = fopen($this->filename, !file_exists($this->filename) ? 'w+' : 'r+');
-		}
 	}
 
-	/**
-	 * Are there entries left in the queue?
-	 *
-	 * @return boolean
-	 */
-	public function isEmpty()
+	public function __destruct()
 	{
-		if (!$this->filehandle)
-			return true;
-
-		return ($this->pos >= filesize($this->filename));
+debug_log('queue destruct', $this->filehandle);
+		if ($this->filehandle)
+		{
+			fflush($this->filehandle);
+			flock($this->filehandle, LOCK_UN);
+			fclose($this->filehandle);
+		}
 	}
 
 	/**
@@ -107,8 +102,10 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	 */
 	public function dequeue()
 	{
-		if (!$this->filehandle)
+		if (!isset($this->filename))
 			return false;
+		if (!isset($this->filehandle))
+			$this->filehandle = fopen($this->filename, 'w+');
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 		fseek($this->filehandle, $this->getCurrentPos(), SEEK_SET);
@@ -134,15 +131,16 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	 */
 	public function enqueue($data)
 	{
-		if (!$this->filehandle)
+		if (!isset($this->filename))
 			return false;
+		if (!isset($this->filehandle))
+			$this->filehandle = fopen($this->filename, 'w+');
 
 		if (!is_array($data))
 			$data = array($data);
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 		fseek($this->filehandle, 0, SEEK_END);
-
 		if (ftell($this->filehandle) < self::HEADER_SIZE)
 			$this->setNextPos(self::HEADER_SIZE);
 
@@ -162,8 +160,10 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	 */
 	public function organize()
 	{
-		if (!$this->filehandle)
+		if (!isset($this->filename))
 			return false;
+		if (!isset($this->filehandle))
+			$this->filehandle = fopen($this->filename, 'w+');
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 
@@ -174,6 +174,7 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 			$fh = fopen('php://temp', 'w+');
 			stream_copy_to_stream($this->filehandle, $fh);
 			$this->setNextPos(self::HEADER_SIZE);
+			rewind($fh);
 			stream_copy_to_stream($fh, $this->filehandle);
 			fclose($fh);
 			ftruncate($this->filehandle, ftell($this->filehandle));
@@ -192,8 +193,10 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	 */
 	public function clear()
 	{
-		if (!$this->filehandle)
+		if (!isset($this->filename))
 			return false;
+		if (!isset($this->filehandle))
+			$this->filehandle = fopen($this->filename, 'w+');
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 

@@ -11,13 +11,6 @@
 interface Sabre_DAV_S3_Plugin_IQueue
 {
 	/**
-	 * Are there entries left in the queue?
-	 *
-	 * @return boolean
-	 */
-	public function isEmpty();
-
-	/**
 	 * Get the top entry and delete it from the queue
 	 *
 	 * @return string|boolean
