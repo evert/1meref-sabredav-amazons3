@@ -35,13 +35,30 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	protected $filehandle = null;
 
 	/**
+	 * The acquired locks in this instance
+	 *
+	 * @var array
+	 */
+	protected $locks = array();
+
+	/**
+	 * The maximum number of processes allowed to process the queue
+	 *
+	 * @var int
+	 */
+	protected $maxlocks = 1;
+
+	/**
 	 * Initialize the Queue
 	 *
 	 * @param string $filename
+	 * @param int $maxlocks
 	 * @return void
 	 */
-	public function __construct($filename)
+	public function __construct($filename, $maxlocks = 1)
 	{
+		$this->maxlocks = $maxlocks;
+
 		$path = dirname($filename);
 		if ($path == '.')
 			$path = '';
@@ -55,8 +72,18 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 			file_put_contents($this->filename, '', FILE_APPEND | LOCK_EX);
 	}
 
+	/**
+	 * Free up resources and locks on destruction
+	 *
+	 * @return void
+	 */
 	public function __destruct()
 	{
+		if (!empty($this->locks))
+		{
+			foreach ($this->locks as $lock => $l)
+				$this->releaseLock($lock);
+		}
 		if ($this->filehandle)
 		{
 			fflush($this->filehandle);
@@ -66,9 +93,53 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	}
 
 	/**
+	 * Try to acquire a lock for processing power
+	 *
+	 * @param int maxlocks
+	 * @return int|bool the lock number or false if no lock is available
+	 */
+	public function acquireLock()
+	{
+		$locked = false;
+
+		for ($i = 1; $i <= $this->maxlocks; $i++)
+		{
+			$lock = fopen($this->filename . '.' . $i . '.lock', 'w');
+			$locked = flock($lock, LOCK_EX | LOCK_NB);
+			if ($locked)
+			{
+				fwrite($lock, time());
+				$this->locks[$i] = $lock;
+				break;
+			}
+			else
+				fclose($lock);
+		}
+
+		return $locked ? $i : false;
+	}
+
+	/**
+	 * Release the lock for processing power
+	 *
+	 * @param $lock
+	 * @return void
+	 */
+	public function releaseLock($lock)
+	{
+		if (isset($this->locks[$lock]))
+		{
+			flock($this->locks[$lock], LOCK_UN);
+			fclose($this->locks[$lock]);
+			@unlink($this->filename . '.' . $lock . '.lock');
+			unset($this->locks[$lock]);
+		}
+	}
+
+	/**
 	 * Reads the position of the next item to dequeue from the header
 	 *
-	 * @return integer|false
+	 * @return integer
 	 */
 	private function getCurrentPos()
 	{
@@ -98,11 +169,11 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	}
 
 	/**
-	 * Get the top entry and delete it from the queue
+	 * Checks if the queue is empty
 	 *
-	 * @return mixed
+	 * @return bool
 	 */
-	public function dequeue()
+	public function isEmpty()
 	{
 		if (!isset($this->filename))
 			return false;
@@ -110,26 +181,22 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 			$this->filehandle = fopen($this->filename, 'r+');
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
-		fseek($this->filehandle, $this->getCurrentPos(), SEEK_SET);
 
-		$data = stream_get_line($this->filehandle, 8192, self::EOL);
-		if (isset($data) && $data !== false && $data !== '')
-			$this->setNextPos(ftell($this->filehandle));
-
+		$pos = $this->getCurrentPos();
 		fflush($this->filehandle);
+		$size = fstat($this->filehandle);
+		$size = (int)$size['size'];
+
 		flock($this->filehandle, LOCK_UN);
 
-		if (isset($data) && $data !== false && $data !== '')
-			return unserialize(strtr($data, self::$TR_DECODE));
-		else
-			return false;
+		return $pos >= $size;
 	}
 
 	/**
 	 * Add strings to the end of the queue
 	 *
 	 * @param $data mixed|array
-	 * @return boolean
+	 * @return bool
 	 */
 	public function enqueue($data)
 	{
@@ -156,12 +223,46 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	}
 
 	/**
+	 * Get the top entry and delete it from the queue
+	 *
+	 * @param $lock a valid lock
+	 * @return mixed returns false on failure or empty queue
+	 */
+	public function dequeue($lock)
+	{
+		if (!isset($this->locks[$lock]))
+			return false;
+		if (!isset($this->filename))
+			return false;
+		if (!isset($this->filehandle))
+			$this->filehandle = fopen($this->filename, 'r+');
+
+		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
+		fseek($this->filehandle, $this->getCurrentPos(), SEEK_SET);
+
+		$data = stream_get_line($this->filehandle, 8192, self::EOL);
+		if (isset($data) && $data !== false && $data !== '')
+			$this->setNextPos(ftell($this->filehandle));
+
+		fflush($this->filehandle);
+		flock($this->filehandle, LOCK_UN);
+
+		if (isset($data) && $data !== false && $data !== '')
+			return unserialize(strtr($data, self::$TR_DECODE));
+		else
+			return false;
+	}
+
+	/**
 	 * reorganize the queue file
 	 *
-	 * @return boolean
+	 * @param $lock a valid lock
+	 * @return bool
 	 */
-	public function organize()
+	public function reorganize($lock)
 	{
+		if (!isset($this->locks[$lock]))
+			return false;
 		if (!isset($this->filename))
 			return false;
 		if (!isset($this->filehandle))
@@ -191,10 +292,13 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	/**
 	 * clear the queue file
 	 *
-	 * @return boolean
+	 * @param $lock a valid lock
+	 * @return bool
 	 */
-	public function clear()
+	public function clear($lock)
 	{
+		if (!isset($this->locks[$lock]))
+			return false;
 		if (!isset($this->filename))
 			return false;
 		if (!isset($this->filehandle))
