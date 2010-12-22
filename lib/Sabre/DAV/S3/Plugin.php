@@ -25,7 +25,7 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 	protected $shutdownfunction_enabled = false;
 
 	/**
-	 * The lock for exclusive processing power
+	 * The lock (file handle) for processing power
 	 *
 	 * @var resource
 	 */
@@ -57,6 +57,7 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 	 *
 	 * @param Sabre_DAV_S3_Plugin_IQueue $queue The queue provider
 	 * @param int $lifetime The minimum time in seconds passed needed from the last modification time for an entity until it is updated.
+	 * @param int $maxprocesstime The maximum number of seconds a process is allowed to execute
 	 */
 	public function __construct(Sabre_DAV_S3_Plugin_IQueue $queue, $lifetime = 0, $maxprocesstime = null)
 	{
@@ -79,6 +80,9 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 	}
 
 	private $uselogfile = false;
+	private $logfile = null;
+	private $logfileid = null;
+	private $logfiletr = array();
 
 	private function elog($s)
 	{
@@ -102,45 +106,18 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 	}
 
 	/**
-	 * Try to acquire the lock for exclusive processing power
-	 *
-	 * @return boolean set to true if lock could be acquired
-	 */
-	protected function acquireProcessLock()
-	{
-		$this->processlock = fopen(__FILE__, 'r');
-		flock($this->processlock, LOCK_EX | LOCK_NB);
-		$r = fgets($this->processlock, 3);
-
-		return ($r === '<?');
-	}
-
-	/**
-	 * Release the lock for exclusive processing power
-	 *
-	 * @return void
-	 */
-	protected function releaseProcessLock()
-	{
-		if ($this->processlock)
-			flock($this->processlock, LOCK_UN);
-	}
-
-	/**
 	 * Process a list of nodes (Entity IDs) to update from S3
 	 *
-	 * @param Sabre_DAV_S3_Plugin_IQueue $queue
 	 * @param Sabre_DAV_S3_IEntityManager $em
-	 * @param int $max_process_time stop processing after this many of seconds
-	 * @return boolean
+	 * @return void
 	 */
-	protected function processQueue(Sabre_DAV_S3_Plugin_IQueue $queue, Sabre_DAV_S3_IEntityManager $em)
+	protected function processQueue(Sabre_DAV_S3_IEntityManager $em)
 	{
 		$start = time();
 
-		while (!($this->max_process_time > 0) || time() - $start < $this->max_process_time)
+		while (!($this->maxprocesstime > 0) || time() - $start < $this->maxprocesstime)
 		{
-			$oid = $queue->dequeue();
+			$oid = $this->queue->dequeue($this->processlock);
 			if ($oid === false)
 				break;	//abort on error or empty queue
 			if (empty($oid))
@@ -162,7 +139,7 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 				if ($em->contains($node))
 				{
 					$lastmodified = $node->getLastUpdated();
-					if ($forceupdate || $lastmodified + $this->lifetime <= time() || !isset($lastmodified))
+					if ($forceupdate || !isset($lastmodified) || $lastmodified + $this->lifetime <= time())
 					{
 						try
 						{
@@ -246,12 +223,12 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 				}
 				else
 					$this->elog('already scheduled for removal!');
+
+				$em->flush();
 			}
 			else
 				$this->elog('not found!');
 		}
-
-		return true;
 	}
 
 	/**
@@ -271,7 +248,10 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 
 		ignore_user_abort(true);
 		ob_end_clean();
-		set_time_limit(0);
+		if (isset($this->maxprocesstime))
+			set_time_limit(ceil($this->maxprocesstime * 1.25));
+		else
+			set_time_limit(0);
 
 		$remote_addr = $this->server->httpRequest->getRawServerValue('REMOTE_ADDR');
 		$server_addr = $this->server->httpRequest->getRawServerValue('SERVER_ADDR');
@@ -305,9 +285,9 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 
 		$em = $this->server->tree->getEntityManager();
 		$s3 = $this->server->tree->getS3();
-		if (!$em || !$s3)
+		if (!$em || !$s3 || !$this->queue)
 		{
-			$this->elog('No Entity Manager or S3 Service available!');
+			$this->elog('No S3, Entity Manager or Queue service available!');
 			return false;
 		}
 		$em->setFlushMode(Sabre_DAV_S3_IEntityManager::FLUSH_MANUAL);
@@ -318,19 +298,22 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 		$body = explode("\n", $body);
 		$this->queue->enqueue($body);
 
-		if ($this->acquireProcessLock())
+		$this->processlock = $this->queue->acquireLock();
+		if ($this->processlock)
 		{
-			$this->elog(PHP_EOL . 'spawning new process to handle the queue...');
-			$this->processQueue($this->queue, $em);
-			$this->queue->organize();
+			$this->elog(PHP_EOL . 'spawning new process (' . $this->processlock . ') to handle the queue...');
+			$this->processQueue($em);
 
-			$this->releaseProcessLock();
+			$this->elog(PHP_EOL . 'reorganizing queue...');
+			$this->queue->reorganize($this->processlock);
 
-			$this->elog(PHP_EOL . 'flushing persistence context...');
+			$this->elog('flushing persistence context...');
 			$em->flush();
+
+			$this->queue->releaseLock($this->processlock);
 		}
 		else
-			$this->elog(PHP_EOL . 'queue process already running, updates added to queue...');
+			$this->elog(PHP_EOL . 'queue process(es) already running, updates added to queue...');
 
 		$this->elog('execution time: ' . (microtime(true) - $ts) . PHP_EOL .
 			'------------------------------------------------------------------------------');

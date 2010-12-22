@@ -11,31 +11,57 @@
 interface Sabre_DAV_S3_Plugin_IQueue
 {
 	/**
-	 * Get the top entry and delete it from the queue
+	 * Try to acquire a lock for processing power
 	 *
-	 * @return string|boolean
+	 * @param int maxlocks
+	 * @return int|bool the lock number or false if no lock is available
 	 */
-	public function dequeue();
+	public function acquireLock();
+
+	/**
+	 * Release the lock for processing power
+	 *
+	 * @param $lock
+	 * @return void
+	 */
+	public function releaseLock($lock);
+
+	/**
+	 * Checks if the queue is empty
+	 *
+	 * @return bool
+	 */
+	public function isEmpty();
 
 	/**
 	 * Add strings to the end of the queue
 	 *
 	 * @param $data string|array
-	 * @return boolean
+	 * @return bool
 	 */
 	public function enqueue($data);
 
 	/**
-	 * reorganize the queue storage
+	 * Get the top entry and delete it from the queue
 	 *
-	 * @return boolean
+	 * @param $lock a valid lock
+	 * @return mixed returns false on failure or empty queue
 	 */
-	public function organize();
+	public function dequeue($lock);
 
 	/**
-	 * clear the queue
+	 * reorganize the queue file
 	 *
-	 * @return boolean
+	 * @param $lock a valid lock
+	 * @return bool
 	 */
-	public function clear();
+	public function reorganize($lock);
+
+	/**
+	 * clear the queue file
+	 *
+	 * @param $lock a valid lock
+	 * @return bool
+	 */
+	public function clear($lock);
 }
