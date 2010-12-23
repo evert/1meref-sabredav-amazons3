@@ -499,7 +499,6 @@ class RequestCore
 			}
 		}
 
-		$this->read_file = null;
 		$this->read_stream = $resource;
 
 		return $this->set_read_stream_size($size);
@@ -541,7 +540,6 @@ class RequestCore
 	 */
 	public function set_write_stream($resource)
 	{
-		$this->write_file = null;
 		$this->write_stream = $resource;
 
 		return $this;
@@ -645,7 +643,7 @@ class RequestCore
 		}
 
 		$read = fread($this->read_stream, min($this->read_stream_size - $this->read_stream_read, $length)); // Remaining upload data or cURL's requested chunk size
-		$this->read_stream_read += $read;
+		$this->read_stream_read += strlen($read);
 
 		return $read;
 	}
