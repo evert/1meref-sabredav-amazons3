@@ -511,21 +511,18 @@ class AmazonS3 extends CFRuntime
 			if (is_resource($opt['fileUpload']))
 			{
 				// Determine the length to read from the stream
-				$length = null; // From current position until EOF by default, size determined by set_read_stream() 
+				$length = null; // From current position until EOF by default, size determined by set_read_stream()
 				if (isset($headers['Content-Length']))
 				{
 					$length = $headers['Content-Length'];
 				}
 				elseif (isset($opt['seekTo']))
 				{
+					// Read from seekTo until EOF by default
 					$stats = fstat($opt['fileUpload']);
 					if ($stats && $stats['size'] >= 0)
 					{
-						$length = $stats['size'] - (integer) $opt['seekTo']; // Read from seekTo until EOF by default
-					}
-					else
-					{
-						throw new S3_Exception('Stream size for streaming upload cannot be determined.');
+						$length = $stats['size'] - (integer) $opt['seekTo'];
 					}
 				}
 
@@ -546,9 +543,10 @@ class AmazonS3 extends CFRuntime
 				{
 					$length = $headers['Content-Length'];
 				}
-				elseif (isset($opt['seekTo']))
+				elseif (isset($opt['seekTo']) && isset($length))
 				{
-					$length -= (integer) $opt['seekTo']; // Read from seekTo until EOF by default
+					// Read from seekTo until EOF by default
+					$length -= (integer) $opt['seekTo'];
 				}
 
 				$request->set_read_stream_size($length);
@@ -3211,6 +3209,12 @@ class AmazonS3 extends CFRuntime
 			unset($opt['contentType']);
 		}
 
+		// Set a default content type.
+		if (!isset($opt['headers']['Content-Type']))
+		{
+			$opt['headers']['Content-Type'] = 'application/octet-stream';
+		}
+
 		// Handle Access Control Lists. Can also be passed as an HTTP header.
 		if (isset($opt['acl']))
 		{
@@ -3426,12 +3430,12 @@ class AmazonS3 extends CFRuntime
 		if (is_string($parts))
 		{
 			// Assume it's the intended XML.
-			$opt['body'] = $xml;
+			$opt['body'] = $parts;
 		}
 		elseif ($parts instanceof SimpleXMLElement)
 		{
 			// Assume it's a SimpleXMLElement object representing the XML.
-			$opt['body'] = $xml->asXML();
+			$opt['body'] = $parts->asXML();
 		}
 		elseif (is_array($parts) || $parts instanceof CFResponse)
 		{
@@ -3537,6 +3541,7 @@ class AmazonS3 extends CFRuntime
 	 * 	partSize - _integer_ (Optional) The size of an individual part. The size may not be smaller than 5 MB or larger than 500 MB. The default value is 50 MB.
 	 * 	storage - _string_ (Optional) Whether to use Standard or Reduced Redundancy storage. [Allowed values: `AmazonS3::STORAGE_STANDARD`, `AmazonS3::STORAGE_REDUCED`]. The default value is <STORAGE_STANDARD>.
 	 * 	uploadId - _string_ (Optional) An upload ID identifying an existing multipart upload to use. If this option is not set, one will be created automatically.
+	 * 	limit - _integer_ (Optional) The maximum number of concurrent uploads done by cURL. Gets passed to CFBatchRequest.
 	 * 	returnCurlHandle - _boolean_ (Optional) A private toggle specifying that the cURL handle be returned rather than actually completing the request. This toggle is useful for manually managed batch requests.
 	 *
 	 * Returns:
@@ -3617,7 +3622,7 @@ class AmazonS3 extends CFRuntime
 		$pieces = $this->get_multipart_counts($upload_filesize, (integer) $opt['partSize']);
 
 		// Queue batch requests
-		$batch = new CFBatchRequest();
+		$batch = new CFBatchRequest(isset($opt['limit']) ? (integer) $opt['limit'] : null);
 		foreach ($pieces as $i => $piece)
 		{
 			$this->batch($batch)->upload_part($bucket, $filename, $upload_id, array(
