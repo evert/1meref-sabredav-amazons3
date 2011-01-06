@@ -10,15 +10,21 @@
  */
 class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 {
-	const HEADER_SIZE = 24;
+	const DATA_MAXSIZE = 8192; // including EOL
+
+	const HEADER_SIZE = 128; // including EOL
 
 	const HEADER_PAD = ' ';
 
 	const EOL = "\n";
 
-	static $TR_ENCODE = array("\\" => '\\\\', "\n" => '\n', "\r" => '\r');
+	const EOL_SIZE = 1;
 
-	static $TR_DECODE = array('\\\\' => "\\", '\n' => "\n", '\r' => "\r");
+	static $HEADER = array('cnt' => 0, 'fst' => self::HEADER_SIZE, 'end' => self::HEADER_SIZE);
+
+	static $TR_ENCODE = array("\\" => '\\\\', "\n" => '\n', "\r" => '\r', "\0" => '\0');
+
+	static $TR_DECODE = array('\\\\' => "\\", '\n' => "\n", '\r' => "\r", '\0' => "\0");
 
 	/**
 	 * The file to store the queue in
@@ -79,11 +85,8 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	 */
 	public function __destruct()
 	{
-		if (!empty($this->locks))
-		{
-			foreach ($this->locks as $lock => $l)
-				$this->releaseLock($lock);
-		}
+		foreach ($this->locks as $lock => $l)
+			$this->releaseLock($lock);
 		if ($this->filehandle)
 		{
 			fflush($this->filehandle);
@@ -137,35 +140,48 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	}
 
 	/**
-	 * Reads the position of the next item to dequeue from the header
+	 * Reads the header
 	 *
 	 * @return integer
 	 */
-	private function getCurrentPos()
+	private function getHeader()
 	{
 		$pos = 0;
+		$size = 0;
 
 		fseek($this->filehandle, 0, SEEK_SET);
 		$header = fread($this->filehandle, self::HEADER_SIZE);
-		if (isset($header) && $header !== false && strlen($header) == self::HEADER_SIZE)
-			$pos = (integer)unserialize(rtrim($header, self::EOL . self::HEADER_PAD));
-		if ($pos < self::HEADER_SIZE)
-			$this->setNextPos($pos = self::HEADER_SIZE);
+		if ($header !== false && strlen($header) == self::HEADER_SIZE)
+			$header = unserialize(rtrim(substr($header, 0, -self::EOL_SIZE), self::HEADER_PAD));
+		else
+			$header = null;
 
-		return $pos;
+		if (!$header)
+		{
+			$header = self::$HEADER;
+			$this->setHeader($header);
+			ftruncate($this->filehandle, self::HEADER_SIZE);
+		}
+
+		return $header;
 	}
 
 	/**
-	 * Sets the position of the next item to dequeue in the header
+	 * Writes the header
 	 *
 	 * @param integer $pos
 	 * @return void
 	 */
-	private function setNextPos($pos)
+	private function setHeader($header)
 	{
 		fseek($this->filehandle, 0, SEEK_SET);
-		$header = str_pad(serialize((integer)$pos), self::HEADER_SIZE - 1, self::HEADER_PAD, STR_PAD_RIGHT) . self::EOL;
-		fwrite($this->filehandle, $header, self::HEADER_SIZE);
+		$header = str_pad(serialize($header), self::HEADER_SIZE - self::EOL_SIZE, self::HEADER_PAD, STR_PAD_RIGHT) . self::EOL;
+		$written = fwrite($this->filehandle, $header, self::HEADER_SIZE);
+		if ($written === false)
+		{
+			flock($this->filehandle, LOCK_UN);
+			throw new ErrorException('Queue write error!');
+		}
 	}
 
 	/**
@@ -182,18 +198,16 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 
-		$pos = $this->getCurrentPos();
+		$header = $this->getHeader();
 		fflush($this->filehandle);
-		$size = fstat($this->filehandle);
-		$size = (int)$size['size'];
 
 		flock($this->filehandle, LOCK_UN);
 
-		return $pos >= $size;
+		return $header['cnt'] <= 0;
 	}
 
 	/**
-	 * Add strings to the end of the queue
+	 * Add data to the end of the queue
 	 *
 	 * @param $data mixed|array
 	 * @return bool
@@ -209,12 +223,28 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 			$data = array($data);
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
-		fseek($this->filehandle, 0, SEEK_END);
-		if (ftell($this->filehandle) < self::HEADER_SIZE)
-			$this->setNextPos(self::HEADER_SIZE);
+		$header = $this->getHeader();
+		fseek($this->filehandle, $header['end'], SEEK_SET);
 
 		foreach ($data as $v)
-			fwrite($this->filehandle, substr(strtr(serialize($v), self::$TR_ENCODE), 0, 8191) . self::EOL, 8192);
+		{
+			$v = strtr(serialize($v), self::$TR_ENCODE);
+			if (strlen($v) > self::DATA_MAXSIZE - self::EOL_SIZE)
+			{
+				flock($this->filehandle, LOCK_UN);
+				throw new ErrorException('Queue data too large!');
+			}
+			$written = fwrite($this->filehandle, $v . self::EOL, self::DATA_MAXSIZE);
+			if ($written === false)
+			{
+				flock($this->filehandle, LOCK_UN);
+				throw new ErrorException('Queue write error!');
+			}
+			$header['end'] +=  $written;
+			$header['cnt']++;
+		}
+
+		$this->setHeader($header);
 
 		fflush($this->filehandle);
 		flock($this->filehandle, LOCK_UN);
@@ -223,10 +253,21 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	}
 
 	/**
+	 * Add data to the end of the queue
+	 *
+	 * @param $data mixed|array
+	 * @return bool
+	 */
+	public function push($data)
+	{
+		return $this->enqueue($data);
+	}
+
+	/**
 	 * Get the top entry and delete it from the queue
 	 *
 	 * @param $lock a valid lock
-	 * @return mixed returns false on failure or empty queue
+	 * @return mixed The first queue entry or false on failure
 	 */
 	public function dequeue($lock)
 	{
@@ -238,19 +279,91 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 			$this->filehandle = fopen($this->filename, 'r+');
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
-		fseek($this->filehandle, $this->getCurrentPos(), SEEK_SET);
+		$header = $this->getHeader();
+		if ($header['cnt'] <= 0)
+		{
+			fflush($this->filehandle);
+			flock($this->filehandle, LOCK_UN);
+			return false;
+		}
 
-		$data = stream_get_line($this->filehandle, 8192, self::EOL);
-		if (isset($data) && $data !== false && $data !== '')
-			$this->setNextPos(ftell($this->filehandle));
+		fseek($this->filehandle, $header['fst'], SEEK_SET);
+		$data = stream_get_line($this->filehandle, self::DATA_MAXSIZE, self::EOL);
+		if ($data === false || $data === '')
+		{
+			flock($this->filehandle, LOCK_UN);
+			throw new ErrorException('Queue read error!');
+		}
+		$header['fst'] += strlen($data) + self::EOL_SIZE;
+		$header['cnt']--;
+
+		$this->setHeader($header);
 
 		fflush($this->filehandle);
 		flock($this->filehandle, LOCK_UN);
 
-		if (isset($data) && $data !== false && $data !== '')
-			return unserialize(strtr($data, self::$TR_DECODE));
-		else
+		return unserialize(strtr($data, self::$TR_DECODE));
+	}
+
+	/**
+	 * Get the top entry and delete it from the queue
+	 *
+	 * @param $lock a valid lock
+	 * @return mixed The first queue entry or false on failure
+	 */
+	public function shift($lock)
+	{
+		return $this->dequeue($lock);
+	}
+
+	/**
+	 * Get the last entry and delete it from the queue
+	 *
+	 * @param $lock a valid lock
+	 * @return mixed The last queue entry or false on failure
+	 */
+	public function pop($lock)
+	{
+		if (!isset($this->locks[$lock]))
 			return false;
+		if (!isset($this->filename))
+			return false;
+		if (!isset($this->filehandle))
+			$this->filehandle = fopen($this->filename, 'r+');
+
+		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
+		$header = $this->getHeader();
+		if ($header['cnt'] <= 0)
+		{
+			fflush($this->filehandle);
+			flock($this->filehandle, LOCK_UN);
+			return false;
+		}
+
+		$seekto = max($header['fst'], $header['end'] - self::DATA_MAXSIZE);
+		fseek($this->filehandle, $seekto, SEEK_SET);
+		$data = fread($this->filehandle, min($header['end'] - $header['fst'], self::DATA_MAXSIZE));
+		if ($data === false || $data === '')
+		{
+			flock($this->filehandle, LOCK_UN);
+			throw new ErrorException('Queue read error!');
+		}
+
+		$start = strrpos($data, self::EOL, -self::EOL_SIZE - 1);
+		if ($start === false)
+			$start = 0;
+		else
+			$start += self::EOL_SIZE;
+		$data = substr($data, $start);
+		$header['end'] -= strlen($data);
+		$header['cnt']--;
+
+		$this->setHeader($header);
+
+		fflush($this->filehandle);
+		flock($this->filehandle, LOCK_UN);
+
+		return unserialize(strtr(substr($data, 0, -self::EOL_SIZE), self::$TR_DECODE));
 	}
 
 	/**
@@ -269,18 +382,24 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 			$this->filehandle = fopen($this->filename, 'r+');
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
+		$header = $this->getHeader();
+		fflush($this->filehandle);
+		$size = fstat($this->filehandle);
+		if ($size)
+			$size = $size['size'];
 
-		$pos = $this->getCurrentPos();
-		if ($pos > self::HEADER_SIZE)
+		if ($header['fst'] > self::HEADER_SIZE || $header['end'] < $size)
 		{
-			fseek($this->filehandle, $pos, SEEK_SET);
 			$fh = fopen('php://temp', 'w+');
-			stream_copy_to_stream($this->filehandle, $fh);
-			$this->setNextPos(self::HEADER_SIZE);
+			stream_copy_to_stream($this->filehandle, $fh, $header['end'] - $header['fst'], $header['fst']);
+			$header['end'] = self::HEADER_SIZE + $header['end'] - $header['fst'];
+			$header['fst'] = self::HEADER_SIZE;
+			$this->setHeader($header);
 			rewind($fh);
+			fseek($this->filehandle, self::HEADER_SIZE, SEEK_SET);
 			stream_copy_to_stream($fh, $this->filehandle);
 			fclose($fh);
-			ftruncate($this->filehandle, ftell($this->filehandle));
+			ftruncate($this->filehandle, $header['end']);
 		}
 
 		fflush($this->filehandle);
@@ -306,7 +425,7 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 
-		$this->setNextPos(self::HEADER_SIZE);
+		$this->setHeader(self::$HEADER);
 		ftruncate($this->filehandle, self::HEADER_SIZE);
 
 		fflush($this->filehandle);
