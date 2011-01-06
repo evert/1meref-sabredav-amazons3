@@ -48,22 +48,32 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	protected $locks = array();
 
 	/**
-	 * The maximum number of processes allowed to process the queue
+	 * The maximum number of processes allowed to read the queue
+	 * Set to -1 to disable
 	 *
 	 * @var int
 	 */
-	protected $maxlocks = 1;
+	protected $maxlocks_read = 1;
+
+	/**
+	 * The maximum number of processes allowed to write the queue
+	 * Set to -1 to disable
+	 *
+	 * @var int
+	 */
+	protected $maxlocks_write = -1;
 
 	/**
 	 * Initialize the Queue
 	 *
 	 * @param string $filename
-	 * @param int $maxlocks
+	 * @param integer $maxlocks
 	 * @return void
 	 */
-	public function __construct($filename, $maxlocks = 1)
+	public function __construct($filename, $maxlocks_read = 1, $maxlocks_write = -1)
 	{
-		$this->maxlocks = $maxlocks;
+		$this->maxlocks_read = $maxlocks_read;
+		$this->maxlocks_write = $maxlocks_write;
 
 		$path = dirname($filename);
 		if ($path == '.')
@@ -76,6 +86,9 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 
 		if (isset($this->filename) && !file_exists($this->filename))
 			file_put_contents($this->filename, '', FILE_APPEND | LOCK_EX);
+
+		if (isset($this->filename))
+			$this->filehandle = fopen($this->filename, 'r+');
 	}
 
 	/**
@@ -96,53 +109,122 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	}
 
 	/**
-	 * Try to acquire a lock for processing power
+	 * Try to acquire a read or write lock
 	 *
-	 * @param int maxlocks
-	 * @return int|bool the lock number or false if no lock is available
+	 * @param string $locktype [LOCK_READ, LOCK_WRITE]
+	 * @return integer|boolean the lock number or false if no lock is available
 	 */
-	public function acquireLock()
+	public function acquireLock($locktype)
 	{
+		if (!isset($this->filehandle))
+			return false;
+
+		if ($locktype == self::LOCK_WRITE)
+		{
+			$maxlocks = $this->maxlocks_write;
+			$suffix = '.wlock';
+			$idxmul = -1;
+		}
+		else
+		{
+			$maxlocks = $this->maxlocks_read;
+			$suffix = '.rlock';
+			$idxmul = 1;
+		}
+
+		if ($maxlocks < 0)
+			return 0;
+
 		$locked = false;
 
-		for ($i = 1; $i <= $this->maxlocks; $i++)
+		for ($i = 1; $i <= $maxlocks; $i++)
 		{
-			$lock = fopen($this->filename . '.' . $i . '.lock', 'w');
+			$lock = fopen($this->filename . '.' . $i . $suffix, 'w');
 			$locked = flock($lock, LOCK_EX | LOCK_NB);
 			if ($locked)
 			{
 				fwrite($lock, time());
-				$this->locks[$i] = $lock;
+				$this->locks[$i * $idxmul] = $lock;
 				break;
 			}
 			else
 				fclose($lock);
 		}
 
-		return $locked ? $i : false;
+		return $locked ? $i * $idxmul : false;
 	}
 
 	/**
-	 * Release the lock for processing power
+	 * Release the read or write lock
 	 *
-	 * @param $lock
-	 * @return void
+	 * @param integer $lock
+	 * @return boolean
 	 */
 	public function releaseLock($lock)
 	{
+		if (!isset($this->filehandle))
+			return false;
+
 		if (isset($this->locks[$lock]))
 		{
-			flock($this->locks[$lock], LOCK_UN);
+			if ($lock < 0)
+				$suffix = '.wlock';
+			else
+				$suffix = '.rlock';
+
+			if (!flock($this->locks[$lock], LOCK_UN))
+				return false;
+
 			fclose($this->locks[$lock]);
-			@unlink($this->filename . '.' . $lock . '.lock');
+			@unlink($this->filename . '.' . abs($lock) . $suffix);
 			unset($this->locks[$lock]);
+
+			return true;
 		}
+
+		return false;
+	}
+
+	/**
+	 * Check if the lock is a valid read lock
+	 *
+	 * @param integer $lock
+	 * @return boolean
+	 */
+	private function isValidReadLock($lock)
+	{
+		if ($this->maxlocks_read < 0 && $lock == 0) // Also allow false and null here
+			return true;
+		if ($lock <= 0)
+			return false;
+		if (!isset($this->locks[$lock]))
+			return false;
+
+		return true;
+	}
+
+	/**
+	 * Check if the lock is a valid write lock
+	 *
+	 * @param integer $lock
+	 * @return boolean
+	 */
+	private function isValidWriteLock($lock)
+	{
+		if ($this->maxlocks_write < 0 && $lock == 0) // Also allow false and null here
+			return true;
+		if ($lock >= 0)
+			return false;
+		if (!isset($this->locks[$lock]))
+			return false;
+
+		return true;
 	}
 
 	/**
 	 * Reads the header
 	 *
-	 * @return integer
+	 * @return array
 	 */
 	private function getHeader()
 	{
@@ -169,7 +251,7 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	/**
 	 * Writes the header
 	 *
-	 * @param integer $pos
+	 * @param array $header
 	 * @return void
 	 */
 	private function setHeader($header)
@@ -187,14 +269,15 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	/**
 	 * Checks if the queue is empty
 	 *
-	 * @return bool
+	 * @param integer $lock a valid read or write lock
+	 * @return boolean
 	 */
-	public function isEmpty()
+	public function isEmpty($lock = 0)
 	{
-		if (!isset($this->filename))
-			return false;
 		if (!isset($this->filehandle))
-			$this->filehandle = fopen($this->filename, 'r+');
+			return false;
+		if (!$this->isValidReadLock($lock) && !$this->isValidWriteLock($lock))
+			return false;
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 
@@ -208,16 +291,18 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 
 	/**
 	 * Add data to the end of the queue
+	 * May be an array to write multiple records. Pass an array of an array to write an array.
 	 *
-	 * @param $data mixed|array
-	 * @return bool
+	 * @param mixed $data
+	 * @param integer $lock a valid write lock
+	 * @return boolean
 	 */
-	public function enqueue($data)
+	public function enqueue($data, $lock = 0)
 	{
-		if (!isset($this->filename))
-			return false;
 		if (!isset($this->filehandle))
-			$this->filehandle = fopen($this->filename, 'r+');
+			return false;
+		if (!$this->isValidWriteLock($lock))
+			return false;
 
 		if (!is_array($data))
 			$data = array($data);
@@ -254,11 +339,13 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 
 	/**
 	 * Add data to the end of the queue
+	 * May be an array to write multiple records. Pass an array of an array to write an array.
 	 *
-	 * @param $data mixed|array
-	 * @return bool
+	 * @param mixed $data
+	 * @param integer $lock a valid write lock
+	 * @return boolean
 	 */
-	public function push($data)
+	public function push($data, $lock = 0)
 	{
 		return $this->enqueue($data);
 	}
@@ -266,17 +353,15 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	/**
 	 * Get the top entry and delete it from the queue
 	 *
-	 * @param $lock a valid lock
+	 * @param $lock a valid read lock
 	 * @return mixed The first queue entry or false on failure
 	 */
-	public function dequeue($lock)
+	public function dequeue($lock = 0)
 	{
-		if (!isset($this->locks[$lock]))
-			return false;
-		if (!isset($this->filename))
-			return false;
 		if (!isset($this->filehandle))
-			$this->filehandle = fopen($this->filename, 'r+');
+			return false;
+		if (!$this->isValidReadLock($lock))
+			return false;
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 		$header = $this->getHeader();
@@ -308,10 +393,10 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	/**
 	 * Get the top entry and delete it from the queue
 	 *
-	 * @param $lock a valid lock
+	 * @param $lock a valid read lock
 	 * @return mixed The first queue entry or false on failure
 	 */
-	public function shift($lock)
+	public function shift($lock = 0)
 	{
 		return $this->dequeue($lock);
 	}
@@ -319,17 +404,15 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	/**
 	 * Get the last entry and delete it from the queue
 	 *
-	 * @param $lock a valid lock
+	 * @param $lock a valid read lock
 	 * @return mixed The last queue entry or false on failure
 	 */
-	public function pop($lock)
+	public function pop($lock = 0)
 	{
-		if (!isset($this->locks[$lock]))
-			return false;
-		if (!isset($this->filename))
-			return false;
 		if (!isset($this->filehandle))
-			$this->filehandle = fopen($this->filename, 'r+');
+			return false;
+		if (!$this->isValidReadLock($lock))
+			return false;
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 		$header = $this->getHeader();
@@ -367,19 +450,30 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	}
 
 	/**
+	 * Add data to the top of the queue
+	 * May be an array to write multiple records. Pass an array of an array to write an array.
+	 *
+	 * @param mixed $data
+	 * @param integer $lock a valid write lock
+	 * @return boolean
+	 */
+	public function unshift($data, $lock = 0)
+	{
+		return false;
+	}
+
+	/**
 	 * reorganize the queue file
 	 *
-	 * @param $lock a valid lock
+	 * @param $lock a valid write lock
 	 * @return bool
 	 */
-	public function reorganize($lock)
+	public function reorganize($lock = 0)
 	{
-		if (!isset($this->locks[$lock]))
-			return false;
-		if (!isset($this->filename))
-			return false;
 		if (!isset($this->filehandle))
-			$this->filehandle = fopen($this->filename, 'r+');
+			return false;
+		if (!$this->isValidWriteLock($lock))
+			return false;
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 		$header = $this->getHeader();
@@ -411,17 +505,15 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	/**
 	 * clear the queue file
 	 *
-	 * @param $lock a valid lock
+	 * @param $lock a valid write lock
 	 * @return bool
 	 */
-	public function clear($lock)
+	public function clear($lock = 0)
 	{
-		if (!isset($this->locks[$lock]))
-			return false;
-		if (!isset($this->filename))
-			return false;
 		if (!isset($this->filehandle))
-			$this->filehandle = fopen($this->filename, 'r+');
+			return false;
+		if (!$this->isValidWriteLock($lock))
+			return false;
 
 		flock($this->filehandle, LOCK_EX); // blocks until lock is acquired
 
