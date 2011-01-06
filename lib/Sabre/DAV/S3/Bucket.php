@@ -84,9 +84,10 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	/**
 	 * Returns or creates the metafile
 	 *
+	 * @param boolean $nocreate
 	 * @return Sabre_DAV_S3_File
 	 */
-	public function getMetaFile()
+	public function getMetaFile($nocreate = false)
 	{
 		$metafile = null;
 
@@ -112,7 +113,7 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 		if (isset($this->metafile))
 			$metafile = $this->metafile;
 
-		if (!isset($metafile))
+		if (!isset($metafile) && !$nocreate)
 		{
 			if (!isset($this->storageclass))
 			{
@@ -266,7 +267,7 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 */
 	public function getStorageClass()
 	{
-		$metafile = $this->getMetaFile();
+		$metafile = $this->getMetaFile(true);
 
 		if (isset($metafile))
 			parent::setStorageClass($metafile->getStorageClass());
@@ -282,7 +283,7 @@ class Sabre_DAV_S3_Bucket extends Sabre_DAV_S3_Directory
 	 */
 	public function setStorageClass($storageclass)
 	{
-		$metafile = $this->getMetaFile();
+		$metafile = $this->getMetaFile(true);
 
 		if (isset($metafile))
 			$metafile->setStorageClass($storageclass);

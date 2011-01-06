@@ -53,7 +53,7 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	 *
 	 * @var int
 	 */
-	protected $maxlocks_read = 1;
+	protected $maxlocks_read = -1;
 
 	/**
 	 * The maximum number of processes allowed to write the queue
@@ -67,10 +67,11 @@ class Sabre_DAV_S3_Plugin_Queue_FS implements Sabre_DAV_S3_Plugin_IQueue
 	 * Initialize the Queue
 	 *
 	 * @param string $filename
-	 * @param integer $maxlocks
+	 * @param integer $maxlocks_read
+	 * @param integer $maxlocks_write
 	 * @return void
 	 */
-	public function __construct($filename, $maxlocks_read = 1, $maxlocks_write = -1)
+	public function __construct($filename, $maxlocks_read = -1, $maxlocks_write = -1)
 	{
 		$this->maxlocks_read = $maxlocks_read;
 		$this->maxlocks_write = $maxlocks_write;
