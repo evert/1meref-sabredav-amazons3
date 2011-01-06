@@ -25,11 +25,18 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 	protected $shutdownfunction_enabled = false;
 
 	/**
-	 * The lock (file handle) for processing power
+	 * The lock (file handle) for reading the queue
 	 *
-	 * @var resource
+	 * @var integer
 	 */
-	protected $processlock = null;
+	protected $readlock = null;
+
+	/**
+	 * The lock (file handle) for writing the queue
+	 *
+	 * @var integer
+	 */
+	protected $writelock = null;
 
 	/**
 	 * The maximum time the script is allowed to process the queue
@@ -117,7 +124,7 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 
 		while (!($this->maxprocesstime > 0) || time() - $start < $this->maxprocesstime)
 		{
-			$oid = $this->queue->dequeue($this->processlock);
+			$oid = $this->queue->dequeue($this->readlock);
 			if ($oid === false)
 				break;	//abort on error or empty queue
 			if (empty($oid))
@@ -296,24 +303,34 @@ class Sabre_DAV_S3_Plugin extends Sabre_DAV_ServerPlugin
 		$this->elog('requested updates: ' . PHP_EOL . $body);
 
 		$body = explode("\n", $body);
-		$this->queue->enqueue($body);
 
-		$this->processlock = $this->queue->acquireLock();
-		if ($this->processlock)
+		$this->writelock = $this->queue->acquireLock(Sabre_DAV_S3_Plugin_IQueue::LOCK_WRITE);
+		if ($this->writelock !== false)
 		{
-			$this->elog(PHP_EOL . 'spawning new process (' . $this->processlock . ') to handle the queue...');
+			$this->queue->enqueue($body, $this->writelock);
+			$this->elog(PHP_EOL . 'updates added to queue!');
+		}
+		else
+			$this->elog(PHP_EOL . 'ERROR: could not add requested updates to queue because no write lock was available!');
+
+		$this->readlock = $this->queue->acquireLock(Sabre_DAV_S3_Plugin_IQueue::LOCK_READ);
+		if ($this->readlock !== false)
+		{
+			$this->elog('spawning new process (' . abs($this->readlock) . ') to handle the queue...');
 			$this->processQueue($em);
 
 			$this->elog(PHP_EOL . 'reorganizing queue...');
-			$this->queue->reorganize($this->processlock);
+			$this->queue->reorganize($this->writelock);
 
 			$this->elog('flushing persistence context...');
 			$em->flush();
 
-			$this->queue->releaseLock($this->processlock);
+			$this->queue->releaseLock($this->readlock);
 		}
 		else
-			$this->elog(PHP_EOL . 'queue process(es) already running, updates added to queue...');
+			$this->elog('no read lock available, so queue processing is already running...');
+
+		$this->queue->releaseLock($this->writelock);
 
 		$this->elog('execution time: ' . (microtime(true) - $ts) . PHP_EOL .
 			'------------------------------------------------------------------------------');

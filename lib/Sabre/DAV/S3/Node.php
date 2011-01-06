@@ -70,7 +70,7 @@ abstract class Sabre_DAV_S3_Node extends Sabre_DAV_S3_Persistable implements Sab
 	/**
 	 * S3 Storage Redundancy setting
 	 *
-	 * @var int
+	 * @var string
 	 */
 	protected $storageclass = null;
 
