@@ -7,7 +7,7 @@
  * 
  * @package Sabre
  * @subpackage DAVACL
- * @copyright Copyright (C) 2007-2010 Rooftop Solutions. All rights reserved.
+ * @copyright Copyright (C) 2007-2011 Rooftop Solutions. All rights reserved.
  * @author Evert Pot (http://www.rooftopsolutions.nl/) 
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
@@ -61,5 +61,15 @@ interface Sabre_DAVACL_IPrincipal extends Sabre_DAV_INode {
      * @return void 
      */
     function setGroupMemberSet(array $principals);
+
+    /**
+     * Returns the displayname
+     *
+     * This should be a human readable name for the principal.
+     * If none is available, return the nodename. 
+     * 
+     * @return string 
+     */
+    function getDisplayName();
 
 }

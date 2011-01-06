@@ -3,6 +3,7 @@
 require_once 'Sabre/HTTP/ResponseMock.php';
 require_once 'Sabre/DAV/Auth/MockBackend.php';
 require_once 'Sabre/CalDAV/TestUtil.php';
+require_once 'Sabre/DAVACL/MockPrincipalBackend.php';
 
 class Sabre_CalDAV_PluginTest extends PHPUnit_Framework_TestCase {
 
@@ -15,11 +16,10 @@ class Sabre_CalDAV_PluginTest extends PHPUnit_Framework_TestCase {
 
         if (!SABRE_HASSQLITE) $this->markTestSkipped('No PDO SQLite support'); 
         $this->caldavBackend = Sabre_CalDAV_TestUtil::getBackend();
-        $authBackend = new Sabre_DAV_Auth_MockBackend();
-        $authBackend->setCurrentUser('principals/user1');
+        $principalBackend = new Sabre_DAVACL_MockPrincipalBackend();
 
-        $calendars = new Sabre_CalDAV_CalendarRootNode($authBackend,$this->caldavBackend);
-        $principals = new Sabre_DAV_Auth_PrincipalCollection($authBackend);
+        $calendars = new Sabre_CalDAV_CalendarRootNode($principalBackend,$this->caldavBackend);
+        $principals = new Sabre_DAVACL_PrincipalCollection($principalBackend);
 
         $root = new Sabre_DAV_SimpleDirectory('root');
         $root->addChild($calendars);
@@ -32,8 +32,6 @@ class Sabre_CalDAV_PluginTest extends PHPUnit_Framework_TestCase {
         $this->plugin = new Sabre_CalDAV_Plugin();
         $this->server->addPlugin($this->plugin);
 
-
-
         $this->response = new Sabre_HTTP_ResponseMock();
         $this->server->httpResponse = $this->response;
 
@@ -42,7 +40,7 @@ class Sabre_CalDAV_PluginTest extends PHPUnit_Framework_TestCase {
     function testSimple() {
 
         $this->assertEquals(array('MKCALENDAR'), $this->plugin->getHTTPMethods('calendars/user1/randomnewcalendar'));
-        $this->assertEquals(array('calendar-access'), $this->plugin->getFeatures());
+        $this->assertEquals(array('calendar-access','calendar-proxy'), $this->plugin->getFeatures());
         $this->assertArrayHasKey('urn:ietf:params:xml:ns:caldav', $this->server->xmlNamespaces);
 
     }
@@ -393,8 +391,8 @@ END:VCALENDAR';
 
         $this->assertArrayHasKey('{urn:ietf:params:xml:ns:caldav}calendar-user-address-set',$props[0][200]);
         $prop = $props[0][200]['{urn:ietf:params:xml:ns:caldav}calendar-user-address-set'];
-        $this->assertTrue($prop instanceof Sabre_DAV_Property_Href);
-        $this->assertEquals('mailto:user1.sabredav@sabredav.org',$prop->getHref());
+        $this->assertTrue($prop instanceof Sabre_DAV_Property_HrefList);
+        $this->assertEquals(array('mailto:user1.sabredav@sabredav.org'),$prop->getHrefs());
 
     }
 

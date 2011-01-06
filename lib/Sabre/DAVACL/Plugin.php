@@ -12,7 +12,7 @@
  * 
  * @package Sabre
  * @subpackage DAVACL
- * @copyright Copyright (C) 2007-2010 Rooftop Solutions. All rights reserved.
+ * @copyright Copyright (C) 2007-2011 Rooftop Solutions. All rights reserved.
  * @author Evert Pot (http://www.rooftopsolutions.nl/) 
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
@@ -57,14 +57,25 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
     );
 
     /**
-     * By default the user van only access nodes that have built-in support for 
-     * ACL (though the Sabre_DAVACL_IACL interface). When nodes are encountered 
-     * that don't implement this interface, access is denied.
+     * By default ACL is only enforced for nodes that have ACL support (the 
+     * ones that implement Sabre_DAVACL_IACL). For any other node, access is 
+     * always granted.
      *
-     * This is useful for some setups, but not for others. This setting allows 
+     * To override this behaviour you can turn this setting off. This is useful 
+     * if you plan to fully support ACL in the entire tree.
+     *
      * @var bool 
      */
-    public $allowAccessToNodesWithoutACL = false;
+    public $allowAccessToNodesWithoutACL = true;
+
+    /**
+     * This string is prepended to the username of the currently logged in 
+     * user. This allows the plugin to determine the principal path based on 
+     * the username.
+     * 
+     * @var string
+     */
+    public $defaultUsernamePath = 'principals';
 
     /**
      * Returns a list of features added by this plugin.
@@ -188,16 +199,20 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
     /**
      * Returns the standard users' principal.
      *
-     * This is one authorative principal url for the current user. 
+     * This is one authorative principal url for the current user.
+     * This method will return null if the user wasn't logged in. 
      * 
-     * @return string 
+     * @return string|null 
      */
     public function getCurrentUserPrincipal() {
 
         $authPlugin = $this->server->getPlugin('auth');
         if (is_null($authPlugin)) return null;
 
-        return $authPlugin->getCurrentUserPrincipal();
+        $userName = $authPlugin->getCurrentUser();
+        if (!$userName) return null;
+
+        return $this->defaultUsernamePath . '/' . $userName;
 
     }
 
@@ -281,6 +296,14 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
                         ),
                         array(
                             'privilege' => '{DAV:}write-content',
+                            'abstract'  => true,
+                        ),
+                        array(
+                            'privilege' => '{DAV:}bind',
+                            'abstract'  => true,
+                        ),
+                        array(
+                            'privilege' => '{DAV:}unbind',
                             'abstract'  => true,
                         ),
                         array(
@@ -428,6 +451,8 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
             '{DAV:}acl-restrictions',
             '{DAV:}inherited-acl-set'
         );
+
+        $server->resourceTypeMapping['Sabre_DAVACL_IPrincipal'] = '{DAV:}principal';
 
     }
 
@@ -605,7 +630,6 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
 
         }
 
-
     }
 
     /**
@@ -659,9 +683,9 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
 
             }
 
-            if (false !== ($index = array_search('{DAV:}resourcetype', $requestedProperties))) {
+            if (false !== ($index = array_search('{DAV:}displayname', $requestedProperties))) {
 
-                $returnedProperties[200]['{DAV:}resourcetype'] = new Sabre_DAV_Property_ResourceType('{DAV:}principal');
+                $returnedProperties[200]['{DAV:}displayname'] = $node->getDisplayName();
 
             }
 
@@ -754,10 +778,8 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
 
         }
 
-        foreach($result as $entry) {
-
-            $entry->serialize($this->server,$multiStatus);
-
+        foreach($result as $response) {
+            $response->serialize($this->server, $multiStatus);
         }
 
         $xml = $dom->saveXML();
@@ -827,10 +849,18 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
                 // We only have to do the expansion if the property was found
                 // and it contains an href element.
                 if (!array_key_exists($propertyName,$node[200])) continue;
-                if (!($node[200][$propertyName] instanceof Sabre_DAV_Property_IHref)) continue;
 
-                $href = $node[200][$propertyName]->getHref();
-                list($node[200][$propertyName]) = $this->expandProperties($href,$childRequestedProperties,0);
+                if ($node[200][$propertyName] instanceof Sabre_DAV_Property_IHref) {
+                    $hrefs = array($node[200][$propertyName]->getHref());
+                } elseif ($node[200][$propertyName] instanceof Sabre_DAV_Property_HrefList) {
+                    $hrefs = $node[200][$propertyName]->getHrefs();
+                }
+
+                $childProps = array();
+                foreach($hrefs as $href) {
+                    $childProps = array_merge($childProps, $this->expandProperties($href,$childRequestedProperties,0));
+                }
+                $node[200][$propertyName] = new Sabre_DAV_Property_ResponseList($childProps);
 
             }
             $result[] = new Sabre_DAV_Property_Response($path, $node);

@@ -12,7 +12,7 @@
  * 
  * @package Sabre
  * @subpackage DAV
- * @copyright Copyright (C) 2007-2010 Rooftop Solutions. All rights reserved.
+ * @copyright Copyright (C) 2007-2011 Rooftop Solutions. All rights reserved.
  * @author Evert Pot (http://www.rooftopsolutions.nl/) 
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
@@ -663,11 +663,7 @@ class Sabre_DAV_Locks_Plugin extends Sabre_DAV_ServerPlugin {
         $children = $xml->children("DAV:");
         $lockInfo->owner = (string)$children->owner;
 
-        $lockToken = '44445502';
-        $id = md5(microtime() . 'somethingrandom');
-        $lockToken.='-' . substr($id,0,4) . '-' . substr($id,4,4) . '-' . substr($id,8,4) . '-' . substr($id,12,12);
-
-        $lockInfo->token = $lockToken;
+        $lockInfo->token = Sabre_DAV_UUIDUtil::getUUID();
         $lockInfo->scope = count($xml->xpath('d:lockscope/d:exclusive'))>0?Sabre_DAV_Locks_LockInfo::EXCLUSIVE:Sabre_DAV_Locks_LockInfo::SHARED;
 
         return $lockInfo;

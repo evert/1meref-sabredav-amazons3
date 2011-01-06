@@ -8,7 +8,7 @@
  * 
  * @package Sabre
  * @subpackage DAV
- * @copyright Copyright (C) 2007-2010 Rooftop Solutions. All rights reserved.
+ * @copyright Copyright (C) 2007-2011 Rooftop Solutions. All rights reserved.
  * @author Evert Pot (http://www.rooftopsolutions.nl/)
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
@@ -87,6 +87,19 @@ class Sabre_DAV_Property_ResourceType extends Sabre_DAV_Property {
     public function is($type) {
 
         return in_array($type, $this->resourceType);
+
+    }
+
+    /**
+     * Adds a resourcetype value to this property
+     *
+     * @param string $type
+     * @return void
+     */
+    public function add($type) {
+
+        $this->resourceType[] = $type;
+        $this->resourceType = array_unique($this->resourceType);
 
     }
 
