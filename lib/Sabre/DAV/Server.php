@@ -5,7 +5,7 @@
  * 
  * @package Sabre
  * @subpackage DAV
- * @copyright Copyright (C) 2007-2010 Rooftop Solutions. All rights reserved.
+ * @copyright Copyright (C) 2007-2011 Rooftop Solutions. All rights reserved.
  * @author Evert Pot (http://www.rooftopsolutions.nl/) 
  * @license http://code.google.com/p/sabredav/wiki/License Modified BSD License
  */
@@ -127,6 +127,19 @@ class Sabre_DAV_Server {
      * @var bool 
      */
     public $debugExceptions = false;
+
+    /**
+     * This property allows you to automatically add the 'resourcetype' value 
+     * based on a node's classname or interface.
+     *
+     * The preset ensures that {DAV:}collection is automaticlly added for nodes 
+     * implementing Sabre_DAV_ICollection.
+     * 
+     * @var array
+     */
+    public $resourceTypeMapping = array(
+        'Sabre_DAV_ICollection' => '{DAV:}collection',
+    );
 
 
     /**
@@ -681,6 +694,14 @@ class Sabre_DAV_Server {
         // This is a multi-status response
         $this->httpResponse->sendStatus(207);
         $this->httpResponse->setHeader('Content-Type','application/xml; charset=utf-8');
+
+        // Normally this header is only needed for OPTIONS responses, however.. 
+        // iCal seems to also depend on these being set for PROPFIND. Since 
+        // this is not harmful, we'll add it.
+        $features = array('1','3', 'extended-mkcol');
+        foreach($this->plugins as $plugin) $features = array_merge($features,$plugin->getFeatures());
+        $this->httpResponse->setHeader('DAV',implode(', ',$features));
+
         $data = $this->generateMultiStatus($newProperties);
         $this->httpResponse->sendBody($data);
 
@@ -1306,7 +1327,6 @@ class Sabre_DAV_Server {
                 switch($prop) {
                     case '{DAV:}getlastmodified'       : if ($node->getLastModified()) $newProperties[200][$prop] = new Sabre_DAV_Property_GetLastModified($node->getLastModified()); break;
                     case '{DAV:}getcontentlength'      : if ($node instanceof Sabre_DAV_IFile) $newProperties[200][$prop] = (int)$node->getSize(); break;
-                    case '{DAV:}resourcetype'          : $newProperties[200][$prop] = new Sabre_DAV_Property_ResourceType($node instanceof Sabre_DAV_ICollection?self::NODE_DIRECTORY:self::NODE_FILE); break;
                     case '{DAV:}quota-used-bytes'      : 
                         if ($node instanceof Sabre_DAV_IQuota) {
                             $quotaInfo = $node->getQuotaInfo();
@@ -1328,6 +1348,12 @@ class Sabre_DAV_Server {
                         }
                         $newProperties[200][$prop] = new Sabre_DAV_Property_SupportedReportSet($reports); 
                         break;
+                    case '{DAV:}resourcetype' :
+                        $newProperties[200]['{DAV:}resourcetype'] = new Sabre_DAV_Property_ResourceType();
+                        foreach($this->resourceTypeMapping as $className => $resourceType) {
+                            if ($node instanceof $className) $newProperties[200]['{DAV:}resourcetype']->add($resourceType);
+                        }
+                        break;
 
                 }
 
@@ -1344,7 +1370,7 @@ class Sabre_DAV_Server {
             // Apple's iCal also requires a trailing slash for principals (rfc 3744).
             // Therefore we add a trailing / for any non-file. This might need adjustments 
             // if we find there are other edge cases.
-            if ($myPath!='' && isset($newProperties[200]['{DAV:}resourcetype']) && $newProperties[200]['{DAV:}resourcetype']->getValue()!==null) $newProperties['href'] .='/';
+            if ($myPath!='' && isset($newProperties[200]['{DAV:}resourcetype']) && in_array("{DAV:}collection", $newProperties[200]['{DAV:}resourcetype']->getValue())) $newProperties['href'] .='/';
 
             // If the resourcetype property was manually added to the requested property list,
             // we will remove it again.
