@@ -297,7 +297,7 @@ END:VCALENDAR';
            }
         }
 
-        $this->assertType('array',$newCalendar);
+        $this->assertInternalType('array',$newCalendar);
 
         $keys = array(
             'uri' => 'NEWCALENDAR',
@@ -346,7 +346,7 @@ END:VCALENDAR';
            }
         }
 
-        $this->assertType('array',$newCalendar);
+        $this->assertInternalType('array',$newCalendar);
 
         $keys = array(
             'uri' => 'NEWCALENDAR',
@@ -392,7 +392,7 @@ END:VCALENDAR';
         $this->assertArrayHasKey('{urn:ietf:params:xml:ns:caldav}calendar-user-address-set',$props[0][200]);
         $prop = $props[0][200]['{urn:ietf:params:xml:ns:caldav}calendar-user-address-set'];
         $this->assertTrue($prop instanceof Sabre_DAV_Property_HrefList);
-        $this->assertEquals(array('mailto:user1.sabredav@sabredav.org'),$prop->getHrefs());
+        $this->assertEquals(array('mailto:user1.sabredav@sabredav.org','/principals/user1'),$prop->getHrefs());
 
     }
 
