@@ -7,7 +7,7 @@
  * ACL is defined in RFC3744.
  *
  * In addition it also provides support for the {DAV:}current-user-principal 
- * property, defined in RFC5397 and the {DAV:}expand-properties report, as 
+ * property, defined in RFC5397 and the {DAV:}expand-property report, as 
  * defined in RFC3253. 
  * 
  * @package Sabre
@@ -130,7 +130,7 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
     public function getSupportedReportSet($uri) {
 
         return array(
-            '{DAV:}expand-properties',
+            '{DAV:}expand-property',
             '{DAV:}principal-property-search',
             '{DAV:}principal-search-property-set', 
         );
@@ -164,28 +164,12 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
             }
         }
 
-        // Now we need to figure out per-privilege what it's 'real' concrete 
-        // privilege is, and see if it's in the ACL list.
-
-        $list = $this->getFlatPrivilegeSet();
         $failed = array();
-
         foreach($privileges as $priv) {
 
-            if (!isset($list[$priv])) {
+            if (!in_array($priv, $acl)) {
                 $failed[] = $priv;
-                continue;
             }
-
-            $concrete = $list[$priv]['concrete'];
-
-            foreach($acl as $ace) {
-                if ($ace['privilege'] == $concrete) {
-                    continue 2;
-                }
-            }
-
-            $failed[] = $priv; 
 
         }
 
@@ -340,6 +324,7 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
         $traverse = function($priv, $concrete = null) use (&$flat, &$traverse) {
 
             $myPriv = array(
+                'privilege' => $priv['privilege'],
                 'abstract' => isset($priv['abstract']) && $priv['abstract'],
                 'aggregates' => array(),
                 'concrete' => isset($priv['abstract']) && $priv['abstract']?$concrete:$priv['privilege'],
@@ -415,7 +400,21 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
 
         }
 
-        return $collected;
+        // Now we deduct all aggregated privileges.
+        $flat = $this->getFlatPrivilegeSet();
+
+        $collected2 = array();
+        foreach($collected as $privilege) {
+
+            $collected2[] = $privilege['privilege'];
+            foreach($flat[$privilege['privilege']]['aggregates'] as $subPriv) {
+                if (!in_array($subPriv, $collected2)) 
+                    $collected2[] = $subPriv;
+            }
+
+        }
+
+        return $collected2;
 
     }
 
@@ -667,7 +666,7 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
             if (false !== ($index = array_search('{DAV:}principal-URL', $requestedProperties))) {
 
                 unset($requestedProperties[$index]);
-                $returnedProperties[200]['{DAV:}principal-URL'] = new Sabre_DAV_Property_Href($node->getPrincipalUrl());
+                $returnedProperties[200]['{DAV:}principal-URL'] = new Sabre_DAV_Property_Href($node->getPrincipalUrl() . '/');
 
             }
             if (false !== ($index = array_search('{DAV:}group-member-set', $requestedProperties))) {
@@ -693,14 +692,17 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
         if (false !== ($index = array_search('{DAV:}principal-collection-set', $requestedProperties))) {
 
             unset($requestedProperties[$index]);
-            $returnedProperties[200]['{DAV:}principal-collection-set'] = new Sabre_DAV_Property_HrefList($this->principalCollectionSet);
+            $val = $this->principalCollectionSet;
+            // Ensuring all collections end with a slash
+            foreach($val as $k=>$v) $val[$k] = $v . '/';
+            $returnedProperties[200]['{DAV:}principal-collection-set'] = new Sabre_DAV_Property_HrefList($val);
 
         }
         if (false !== ($index = array_search('{DAV:}current-user-principal', $requestedProperties))) {
 
             unset($requestedProperties[$index]);
             if ($url = $this->getCurrentUserPrincipal()) {
-                $returnedProperties[200]['{DAV:}current-user-principal'] = new Sabre_DAV_Property_Principal(Sabre_DAV_Property_Principal::HREF, $url);
+                $returnedProperties[200]['{DAV:}current-user-principal'] = new Sabre_DAV_Property_Principal(Sabre_DAV_Property_Principal::HREF, $url . '/');
             } else {
                 $returnedProperties[200]['{DAV:}current-user-principal'] = new Sabre_DAV_Property_Principal(Sabre_DAV_Property_Principal::UNAUTHENTICATED);
             }
@@ -710,6 +712,15 @@ class Sabre_DAVACL_Plugin extends Sabre_DAV_ServerPlugin {
 
             unset($requestedProperties[$index]);
             $returnedProperties[200]['{DAV:}supported-privilege-set'] = new Sabre_DAVACL_Property_SupportedPrivilegeSet($this->getSupportedPrivilegeSet());
+
+        }
+        if (false !== ($index = array_search('{DAV:}current-user-privilege-set', $requestedProperties))) {
+
+            $val = $this->getCurrentUserPrivilegeSet($node);
+            if (!is_null($val)) {
+                unset($requestedProperties[$index]);
+                $returnedProperties[200]['{DAV:}current-user-privilege-set'] = new Sabre_DAVACL_Property_CurrentUserPrivilegeSet($val);
+            }
 
         }
 
